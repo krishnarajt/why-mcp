@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "why-mcp-bad-e1": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "server", "bad", "--exhibit", "1"]
+    },
+    "why-mcp-good-e1": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "server", "good", "--exhibit", "1"]
+    },
+    "why-mcp-bad-e3": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "server", "bad", "--exhibit", "3"]
+    },
+    "why-mcp-good-e3": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "server", "good", "--exhibit", "3"]
+    },
+    "why-mcp-primitives": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "server", "good", "--exhibit", "0"]
+    }
+  }
+}

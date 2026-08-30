@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+hr.db
+hr.db-wal
+hr.db-shm
+
+# Vercel CLI scratch (the deploy workflow assembles this fresh)
+.vercel/

@@ -1,0 +1,1850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Why MCP — Two Servers, One Question</title>
+<meta name="description" content="An interactive lesson in why MCP servers are harder than they look. Seven pitfalls, each shipped twice — badly and well — asked the same question, with the cost on screen.">
+<meta property="og:title" content="Why MCP — Two Servers, One Question">
+<meta property="og:description" content="Seven MCP design pitfalls, each built twice, asked the same question. Watch the token counter.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔌</text></svg>">
+<style>
+  :root {
+    --bg: #0e1116; --card: #151a23; --card2: #1c2330; --border: #2a3345;
+    --text: #e8edf6; --muted: #8b98af; --accent: #6478f0;
+    --ok: #34c98e; --danger: #ef5b6a; --warn: #dfa514; --teal: #4fd6bb;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 18px; scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    background-image: radial-gradient(ellipse 70% 45% at 50% -10%, rgba(100,120,240,.14), transparent);
+    color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh; padding-bottom: 4rem;
+  }
+  .wrap { max-width: 1340px; margin: 0 auto; padding: 1.5rem; }
+  code { font-family: var(--mono); font-size: .88em; background: rgba(100,120,240,.12);
+    padding: .08em .38em; border-radius: 4px; color: #b9c6e0; }
+
+  /* ---------------------------------------------------------- header */
+  header { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; padding: 1.2rem 0 1.4rem; }
+  header .eyebrow { font-size: .72rem; letter-spacing: .18em; color: var(--accent); font-weight: 700; }
+  header h1 { font-size: 2.3rem; margin-top: .2rem;
+    background: linear-gradient(90deg, #8b9bf5, var(--teal));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header .sub { color: var(--muted); font-size: 1rem; margin-top: .3rem; max-width: 60ch; }
+  header .spacer { flex: 1; }
+  header .right { display: flex; flex-direction: column; align-items: flex-end; gap: .55rem; }
+  .hbtn { font-size: .85rem; padding: .55rem 1rem; border-radius: 10px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--border); transition: .15s; }
+  .hbtn:hover { border-color: var(--accent); color: var(--text); }
+  .hbtn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .cfg { font-family: var(--mono); font-size: .72rem; color: var(--muted); text-align: right; line-height: 1.6; }
+
+  /* ------------------------------------------------------ mode switch */
+  .modeswitch { display: flex; gap: .25rem; padding: .25rem; border-radius: 12px;
+    background: var(--card2); border: 1px solid var(--border); }
+  .modeswitch button { font-size: .82rem; font-weight: 600; padding: .45rem .95rem; cursor: pointer;
+    border: none; border-radius: 9px; background: transparent; color: var(--muted); transition: .15s; }
+  .modeswitch button:hover { color: var(--text); }
+  .modeswitch button.on { background: var(--accent); color: #fff; }
+  .modeswitch button.on.live { background: var(--ok); color: #06231a; }
+  .urlbar { display: flex; gap: .4rem; align-items: center; }
+  .urlbar input { background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: .45rem .6rem; font-family: var(--mono); font-size: .74rem; width: 15rem; }
+  .urlbar input:focus { outline: none; border-color: var(--accent); }
+  .dotstat { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+  .dotstat.ok { background: var(--ok); box-shadow: 0 0 7px var(--ok); }
+  .dotstat.bad { background: var(--danger); }
+
+  /* -------------------------------------------------------- mode banner */
+  .banner { border-radius: 13px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;
+    display: flex; gap: 1rem; align-items: flex-start; font-size: .9rem; line-height: 1.65; }
+  .banner .ico { font-size: 1.3rem; line-height: 1; flex: 0 0 auto; }
+  .banner b { color: var(--text); }
+  .banner.demo { border: 1px solid rgba(100,120,240,.42); background: rgba(100,120,240,.08); color: #bcc8e6; }
+  .banner.live { border: 1px solid rgba(52,201,142,.42); background: rgba(52,201,142,.07); color: #a9dcc8; }
+  .banner.err  { border: 1px solid rgba(239,91,106,.45); background: rgba(239,91,106,.08); color: #f0b6bc; }
+  .banner a { color: var(--teal); }
+
+  /* ---------------------------------------------------------- nav/tabs */
+  nav { display: flex; gap: .3rem; border-bottom: 1px solid var(--border); margin-bottom: 1.4rem; flex-wrap: wrap; }
+  nav button { font-size: .95rem; padding: .75rem 1.05rem; cursor: pointer; background: none;
+    color: var(--muted); border: none; border-bottom: 3px solid transparent; margin-bottom: -1px; transition: .15s; }
+  nav button:hover { color: var(--text); }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  nav button .num { color: var(--accent); font-weight: 700; margin-right: .4rem; }
+  section.tab { display: none; animation: fadein .25s; }
+  section.tab.show { display: block; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+
+  /* ------------------------------------------------------------- cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.3rem 1.4rem; margin-bottom: 1.1rem; }
+  .card h3 { font-size: 1rem; margin-bottom: .6rem; }
+  .card p { color: var(--muted); line-height: 1.7; }
+  .card p + p { margin-top: .7rem; }
+  .card.accent { border-left: 3px solid var(--accent); }
+  .pitfall { color: var(--warn); font-size: .82rem; letter-spacing: .04em; text-transform: uppercase;
+    font-weight: 700; margin-bottom: .5rem; }
+  .question { font-size: 1.25rem; line-height: 1.55; font-weight: 500; }
+  .question::before { content: '“'; color: var(--accent); font-size: 1.6rem; }
+  .question::after { content: '”'; color: var(--accent); font-size: 1.6rem; }
+  .watch { color: var(--muted); font-size: .9rem; margin-top: .8rem; line-height: 1.65;
+    border-top: 1px solid var(--border); padding-top: .8rem; }
+  .watch b { color: var(--text); }
+
+  /* --------------------------------------------- the demo-mode explainer */
+  .simnote { border: 1px dashed rgba(100,120,240,.45); background: rgba(100,120,240,.055);
+    border-radius: 13px; padding: 1.05rem 1.2rem; margin-bottom: 1.1rem; }
+  .simnote > h4 { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 800; margin-bottom: .5rem; display: flex; gap: .5rem; align-items: center; }
+  .simnote > h4::before { content: '◆'; font-size: .8rem; }
+  .simnote p { color: #bcc8e6; line-height: 1.72; font-size: .9rem; }
+  .simnote p + p { margin-top: .6rem; }
+  .simnote b { color: var(--text); }
+  .simnote ul { margin: .6rem 0 0 1.1rem; color: #bcc8e6; font-size: .88rem; line-height: 1.75; }
+  .simnote ul li + li { margin-top: .3rem; }
+  .simnote .predict { margin-top: .85rem; padding: .7rem .9rem; border-radius: 9px;
+    background: rgba(223,165,20,.08); border: 1px solid rgba(223,165,20,.32); color: #f0e2be;
+    font-size: .88rem; line-height: 1.65; }
+  .simnote .predict b { color: var(--warn); }
+
+  /* ------------------------------------------------------ split panels */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-bottom: 1.1rem; }
+  @media (max-width: 980px) { .split { grid-template-columns: 1fr; } }
+  .side { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .side.bad { border-top: 3px solid var(--danger); }
+  .side.good { border-top: 3px solid var(--ok); }
+  .side > .head { padding: .9rem 1.2rem; display: flex; align-items: center; gap: .6rem;
+    border-bottom: 1px solid var(--border); background: var(--card2); flex-wrap: wrap; }
+  .side > .head .tag { font-size: .7rem; font-weight: 800; letter-spacing: .14em; padding: .2rem .55rem;
+    border-radius: 5px; }
+  .side.bad .tag { background: rgba(239,91,106,.16); color: var(--danger); }
+  .side.good .tag { background: rgba(52,201,142,.16); color: var(--ok); }
+  .side > .head .file { font-family: var(--mono); font-size: .72rem; color: var(--muted); margin-left: auto; }
+  .side > .head .file:hover { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .side .body { padding: 1.1rem 1.2rem; }
+  .choice { color: var(--muted); font-size: .92rem; line-height: 1.72; }
+
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin: 1rem 0 .4rem; }
+  .metric { background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+    padding: .7rem .55rem; text-align: center; transition: .3s; }
+  .metric .v { font-family: var(--mono); font-size: 1.45rem; font-weight: 700; line-height: 1.1; }
+  .metric .k { font-size: .62rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-top: .3rem; }
+  .metric.focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(100,120,240,.25); }
+  .metric.focus .k::after { content: ' ◂ watch this'; color: var(--accent); letter-spacing: 0; }
+  .metric.hot .v { color: var(--danger); }
+  .metric.cool .v { color: var(--ok); }
+  .metric.bump { animation: bump .35s; }
+  @keyframes bump { 40% { transform: scale(1.09); } }
+
+  .meter { height: 7px; background: var(--card2); border-radius: 99px; overflow: hidden; margin: .7rem 0 .3rem; }
+  .meter > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .45s; }
+  .meter.warn > i { background: var(--warn); }
+  .meter.over > i { background: var(--danger); }
+  .meter-lbl { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+
+  .verdict { margin-top: .9rem; padding: .7rem .9rem; border-radius: 9px; font-size: .88rem; line-height: 1.55;
+    border: 1px solid var(--border); }
+  .verdict.pass { border-color: rgba(52,201,142,.45); background: rgba(52,201,142,.08); color: var(--ok); }
+  .verdict.fail { border-color: rgba(239,91,106,.45); background: rgba(239,91,106,.08); color: var(--danger); }
+  .verdict.open { border-color: rgba(100,120,240,.45); background: rgba(100,120,240,.08); color: #9db4e8; }
+  .verdict b { display: block; font-size: .68rem; letter-spacing: .13em; text-transform: uppercase; margin-bottom: .25rem; }
+
+  .trace { margin-top: .9rem; font-family: var(--mono); font-size: .74rem; max-height: 340px; overflow-y: auto;
+    background: #0a0d12; border: 1px solid var(--border); border-radius: 9px; padding: .7rem .8rem; }
+  .trace:empty::after { content: 'not run yet'; color: var(--muted); font-style: italic; }
+  .trace .ln { padding: .18rem 0; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+    animation: slidein .22s; }
+  @keyframes slidein { from { opacity: 0; transform: translateX(-5px); } }
+  .trace .call { color: #9db4e8; }
+  .trace .res { color: var(--muted); }
+  .trace .res.big { color: var(--danger); font-weight: 700; }
+  .trace .ans { color: var(--text); border-left: 2px solid var(--ok); padding-left: .6rem; margin: .4rem 0; }
+  .trace .err { color: var(--danger); border-left: 2px solid var(--danger); padding-left: .6rem; margin: .4rem 0; }
+  .trace .tools { color: var(--warn); }
+  .trace .peek { color: var(--muted); cursor: pointer; text-decoration: underline dotted; font-size: .7rem; }
+  .trace .peek:hover { color: var(--accent); }
+  .trace pre.peeked { margin: .35rem 0 .5rem; padding: .55rem .7rem; background: #0d1219;
+    border: 1px solid var(--border); border-left: 2px solid var(--accent); border-radius: 6px;
+    max-height: 260px; overflow: auto; color: #b9c6e0; font-size: .7rem; line-height: 1.55; white-space: pre; }
+
+  .runbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.1rem; }
+  .runbar button { font-size: .88rem; padding: .6rem 1.1rem; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: #fff; border: 1px solid transparent; font-weight: 600; transition: .15s; }
+  .runbar button.ghost { background: transparent; color: var(--muted); border-color: var(--border); font-weight: 500; }
+  .runbar button.ghost:hover { color: var(--text); border-color: var(--accent); }
+  .runbar button:disabled { opacity: .45; cursor: not-allowed; }
+  .runbar .note { color: var(--muted); font-size: .8rem; margin-left: auto; font-family: var(--mono); }
+
+  .dots { display: flex; gap: .28rem; flex-wrap: wrap; margin-top: .7rem; }
+  .dot { width: 15px; height: 15px; border-radius: 4px; background: var(--card2); border: 1px solid var(--border);
+    transition: .2s; }
+  .dot.pass { background: rgba(52,201,142,.75); border-color: transparent; }
+  .dot.fail { background: rgba(239,91,106,.75); border-color: transparent; }
+  .rate { font-family: var(--mono); font-size: 2.1rem; font-weight: 700; }
+  .ratebox .sub { color: var(--muted); font-size: .74rem; margin-top: .2rem; }
+
+  /* -------------------------------------------------------- comparison */
+  .compare { border: 1px solid rgba(223,165,20,.35); background: rgba(223,165,20,.06);
+    border-radius: 13px; padding: 1rem 1.2rem; margin-bottom: 1.1rem; display: none; }
+  .compare.show { display: block; }
+  .compare h4 { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--warn); font-weight: 800; margin-bottom: .6rem; }
+  .compare table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .compare th, .compare td { text-align: right; padding: .45rem .6rem; border-bottom: 1px solid rgba(223,165,20,.16); }
+  .compare th:first-child, .compare td:first-child { text-align: left; color: var(--muted); }
+  .compare th { font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .compare td { font-family: var(--mono); }
+  .compare td.gap { color: var(--warn); font-weight: 700; }
+  .compare tr.hero td { font-size: 1rem; }
+
+  /* -------------------------------------------------------- db + tables */
+  .dbpanel { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .dbcell { background: var(--card2); border: 1px solid var(--border); border-radius: 9px; padding: .55rem .85rem;
+    font-family: var(--mono); font-size: .82rem; transition: .3s; }
+  .dbcell.lost { border-color: var(--danger); color: var(--danger); animation: bump .4s; }
+  .dbcell b { color: var(--text); }
+  .dbcell.lost b { color: var(--danger); }
+  .dbtables { display: grid; gap: 1.1rem; }
+  .dbtable .dbhead { display: flex; align-items: baseline; gap: .7rem; margin-bottom: .8rem; flex-wrap: wrap; }
+  .dbtable .dbhead h3 { margin: 0; font-family: var(--mono); color: var(--accent); }
+  .dbtable .dbhead span { color: var(--muted); font-size: .78rem; }
+  .dbscroll { overflow: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: 8px; }
+  table.dbpreview { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .76rem; }
+  table.dbpreview th, table.dbpreview td { text-align: left; padding: .55rem .65rem;
+    border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.dbpreview th { color: var(--muted); font-size: .65rem; text-transform: uppercase;
+    letter-spacing: .08em; white-space: nowrap; position: sticky; top: 0; z-index: 1; background: var(--card2); }
+  table.dbpreview tbody tr:nth-child(even) td { background: rgba(255,255,255,.018); }
+  table.dbpreview tbody tr:hover td { background: rgba(100,120,240,.09); }
+  table.dbpreview td { font-family: var(--mono); max-width: 360px; white-space: pre-wrap;
+    overflow-wrap: anywhere; line-height: 1.45; }
+  table.dbpreview tr:last-child td { border-bottom: 0; }
+
+  table.ov { width: 100%; border-collapse: collapse; font-size: .86rem; }
+  table.ov th, table.ov td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid var(--border);
+    vertical-align: top; }
+  table.ov th { color: var(--muted); font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; }
+  table.ov tbody tr { cursor: pointer; }
+  table.ov tbody tr:hover td { background: rgba(100,120,240,.09); }
+  table.ov td.n { color: var(--accent); font-weight: 700; font-family: var(--mono); }
+  table.ov td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+  table.ov td.num .b { color: var(--danger); }
+  table.ov td.num .g { color: var(--ok); }
+  table.ov td.num .arw { color: var(--muted); margin: 0 .35rem; }
+
+  /* ------------------------------------------------------- code + wire */
+  details.src { margin-top: .9rem; }
+  details.src > summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+  details.src > summary:hover { color: var(--accent); }
+  pre.code { margin-top: .6rem; background: #0a0d12; border: 1px solid var(--border); border-radius: 9px;
+    padding: .8rem .9rem; font-family: var(--mono); font-size: .7rem; line-height: 1.6;
+    max-height: 460px; overflow: auto; color: #b9c6e0; white-space: pre; }
+
+  .wire { font-family: var(--mono); font-size: .72rem; max-height: 420px; overflow: auto;
+    background: #0a0d12; border: 1px solid var(--border); border-radius: 9px; padding: .7rem .8rem; }
+  .wire:empty::after { content: 'run something first'; color: var(--muted); font-style: italic; }
+  .wire .f { padding: .22rem 0; display: flex; gap: .6rem; align-items: baseline; }
+  .wire .f .d { flex: 0 0 auto; font-size: .62rem; letter-spacing: .06em; padding: .05rem .35rem; border-radius: 4px; }
+  .wire .f .d.out { background: rgba(100,120,240,.18); color: #9db4e8; }
+  .wire .f .d.in  { background: rgba(52,201,142,.15); color: var(--ok); }
+  .wire .f .m { color: var(--text); }
+  .wire .f .b { color: var(--muted); word-break: break-all; }
+
+  .fileref { color: var(--teal); cursor: pointer; font-family: var(--mono); font-size: .84em;
+    border-bottom: 1px dotted rgba(79,214,187,.5); }
+  .fileref:hover { color: var(--text); }
+
+  /* ------------------------------------------------------------ lesson */
+  .lesson { border-left: 3px solid var(--warn); }
+  .lesson > h2 { font-size: 1.35rem; line-height: 1.4; margin-bottom: 1.1rem; font-weight: 650;
+    background: linear-gradient(90deg, #e8edf6, var(--warn));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lblock { margin-bottom: 1.15rem; }
+  .lblock > h4 { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 800; margin-bottom: .4rem; }
+  .lblock > p { color: #c3cee2; line-height: 1.78; font-size: .95rem; }
+  .lblock.cost > h4 { color: var(--danger); }
+  .rulebox { margin: 1.4rem 0 .4rem; padding: 1rem 1.2rem; border-radius: 11px;
+    border: 1px solid rgba(223,165,20,.4); background: rgba(223,165,20,.07); }
+  .rulebox > h4 { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--warn); font-weight: 800; margin-bottom: .35rem; }
+  .rulebox > p { color: #f0e2be; line-height: 1.7; font-size: 1rem; font-weight: 500; }
+  .readmore { margin-top: 1rem; color: var(--muted); font-size: .84rem; }
+
+  .snip { margin: 1.1rem 0; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+  .snip > .shead { padding: .65rem .95rem; background: var(--card2); display: flex; gap: .7rem;
+    align-items: baseline; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .snip .slabel { font-size: .88rem; font-weight: 600; }
+  .snip .sref { font-family: var(--mono); font-size: .7rem; color: var(--muted); margin-left: auto; cursor: pointer; }
+  .snip .sref:hover { color: var(--accent); text-decoration: underline; }
+  .snip .snote { padding: .75rem .95rem; color: #b3c0d6; font-size: .85rem; line-height: 1.7;
+    border-bottom: 1px solid var(--border); background: rgba(100,120,240,.04); }
+  .snip pre { background: #0a0d12; padding: .8rem .9rem; font-family: var(--mono); font-size: .7rem;
+    line-height: 1.6; max-height: 420px; overflow: auto; color: #b9c6e0; white-space: pre; }
+  .snip pre .gut { color: #48566e; user-select: none; }
+
+  .demo { margin: 1.1rem 0; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+  .demo.bad { border-left: 3px solid var(--danger); }
+  .demo.good { border-left: 3px solid var(--ok); }
+  .demo > .dhead { padding: .65rem .95rem; background: var(--card2); display: flex; gap: .7rem;
+    align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .demo .dlabel { font-size: .88rem; font-weight: 600; }
+  .demo .dcall { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+  .demo .dcost { font-family: var(--mono); font-size: .72rem; color: var(--warn); margin-left: auto; }
+  .demo .dhead button { font-size: .78rem; padding: .4rem .85rem; border-radius: 8px; cursor: pointer;
+    background: transparent; color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
+  .demo .dhead button:hover { background: var(--accent); color: #fff; }
+  .demo .dnote { padding: .75rem .95rem; color: #b3c0d6; font-size: .85rem; line-height: 1.7;
+    border-bottom: 1px solid var(--border); background: rgba(100,120,240,.04); }
+  .demo pre { background: #0a0d12; padding: .8rem .9rem; font-family: var(--mono); font-size: .7rem;
+    line-height: 1.6; max-height: 440px; overflow: auto; color: #b9c6e0; white-space: pre-wrap;
+    word-break: break-word; }
+
+  .pblock { margin-bottom: 1.1rem; }
+  .pblock > h4 { font-size: .95rem; margin-bottom: .4rem; color: var(--text); }
+  .pblock > p { color: #c3cee2; line-height: 1.78; font-size: .93rem; }
+
+  /* ---------------------------------------------------------- playground */
+  .chips { display: flex; gap: .4rem; flex-wrap: wrap; margin: .8rem 0; }
+  .chip { font-size: .78rem; padding: .4rem .8rem; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--border); transition: .15s; text-align: left; }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .chip.on { background: rgba(100,120,240,.18); color: var(--text); border-color: var(--accent); }
+  .chip .why { color: var(--muted); font-size: .72rem; margin-left: .4rem; }
+  textarea.q { width: 100%; background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: .8rem .9rem; font-size: .95rem; font-family: inherit; resize: vertical;
+    min-height: 5rem; line-height: 1.6; }
+  textarea.q:focus { outline: none; border-color: var(--accent); }
+  select.pair { background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: .5rem .7rem; font-size: .85rem; }
+
+  /* ------------------------------------------------------------- misc */
+  .kv { display: grid; grid-template-columns: 12rem 1fr; gap: .5rem 1rem; font-size: .88rem; }
+  .kv dt { color: var(--muted); }
+  .kv dd { color: var(--text); line-height: 1.6; }
+  .toolgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .4rem;
+    margin-top: .8rem; }
+  .toolpill { font-family: var(--mono); font-size: .7rem; padding: .4rem .6rem; border-radius: 7px;
+    background: var(--card2); border: 1px solid var(--border); color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toolpill.dup { border-color: rgba(223,165,20,.5); color: var(--warn); }
+  footer { text-align: center; color: var(--muted); font-size: .82rem; padding: 3rem 0 1rem; line-height: 1.8; }
+  footer a { color: var(--teal); }
+
+  /* ---------- narrow screens ---------- */
+  @media (max-width: 620px) {
+    html { font-size: 16px; }
+    .wrap { padding: 1rem; }
+    header { padding: .8rem 0 1rem; }
+    header h1 { font-size: 1.75rem; }
+    header .right { align-items: stretch; width: 100%; }
+    header .cfg { text-align: left; }
+    .urlbar input { width: 100%; flex: 1; }
+    /* Four metric tiles on a phone wrap their labels into four lines each.
+       Two-up keeps the numbers -- which are the whole point -- legible. */
+    .metrics { grid-template-columns: 1fr 1fr; }
+    .metric .v { font-size: 1.3rem; }
+    .setrow { grid-template-columns: 1fr; }
+    table.ov, table.ov thead, table.ov tbody, table.ov th, table.ov td, table.ov tr { display: block; }
+    table.ov thead { display: none; }
+    table.ov tbody tr { border: 1px solid var(--border); border-radius: 10px;
+      padding: .6rem .8rem; margin-bottom: .7rem; }
+    table.ov td { border: none; padding: .25rem 0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">WHY MCP</div>
+      <h1>Two Servers, One Question</h1>
+      <div class="sub">The same data, the same question — asked of a badly designed MCP server
+        and a well designed one. Seven exhibits, and a scoreboard for each.</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="right">
+      <div class="modeswitch">
+        <button id="mDemo">Demo mode</button>
+        <button id="mLive" class="live">Live mode</button>
+      </div>
+      <div class="urlbar" id="urlbar" style="display:none">
+        <span class="dotstat" id="stat"></span>
+        <input id="baseUrl" spellcheck="false" placeholder="http://localhost:1184">
+        <button class="hbtn" id="connectBtn">Connect</button>
+      </div>
+      <div class="cfg" id="cfg"></div>
+    </div>
+  </header>
+
+  <div id="banner"></div>
+  <nav id="nav"></nav>
+
+  <section class="tab show" id="tab-ov"></section>
+  <div id="tabs"></div>
+  <section class="tab" id="tab-play"></section>
+  <section class="tab" id="tab-db"></section>
+  <section class="tab" id="tab-prim"></section>
+  <section class="tab" id="tab-how"></section>
+
+  <footer>
+    <div><b>Why MCP</b> — seven pitfalls, each shipped twice.</div>
+    <div style="margin-top:.4rem">Every number, tool output and code snippet on this page was
+      captured from the real MCP servers over stdio. Nothing here was typed by hand.</div>
+  </footer>
+</div>
+
+<script src="demo-data.js"></script>
+<script>
+/* =====================================================================
+   Why MCP — the static demo site.
+
+   Two modes, one UI:
+
+     DEMO MODE (default)  no backend at all. Every run is replayed from
+       demo-data.js, which scripts/build_demo_data.py captured by spawning
+       the real MCP servers over stdio. The tool outputs, token counts,
+       traces, wire frames and code snippets are real; what is simulated is
+       the MODEL's side of the conversation and the passage of time.
+
+     LIVE MODE           talks to a running copy of the FastAPI app
+       (default http://localhost:1184) over the same endpoints the bundled
+       UI uses, including SSE for streaming runs.
+
+   Everything below is written against a small `api` façade so the two
+   modes share every pixel of rendering code. If a panel looks right in
+   one mode it looks right in the other.
+   ===================================================================== */
+
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, cls, html) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html != null) n.innerHTML = html;
+  return n;
+};
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const num = n => (n ?? 0).toLocaleString();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Lesson prose is authored in harness/lessons.py with two conventions:
+//   `backticks`    -> inline code
+//   [[a/path.py]]  -> a link that opens that file's source inline
+// Everything else is trusted HTML: it is our own content, never user input,
+// which is what lets the prose use <b> and <i> for emphasis.
+function rich(text) {
+  return String(text ?? '')
+    .replace(/\[\[([^\]]+)\]\]/g, (_m, p) => `<span class="fileref" data-openfile="${p}">${p}</span>`)
+    .replace(/`([^`]+)`/g, (_m, c) => `<code>${esc(c)}</code>`);
+}
+
+const D = window.DEMO_DATA;
+const LS_MODE = 'whymcp.mode', LS_BASE = 'whymcp.base';
+const DEFAULT_BASE = 'http://localhost:1184';
+
+let MODE = localStorage.getItem(LS_MODE) || 'demo';
+let BASE = localStorage.getItem(LS_BASE) || DEFAULT_BASE;
+let LIVE_OK = false;          // did the last live handshake succeed?
+let CFG = { context_budget: D.context_budget || 24000, model: 'captured', offline_now: true };
+let BUSY = false;
+const STATE = {};             // STATE[`${exhibitId}:${variant}`] = { side, runs: [] }
+
+const isDemo = () => MODE === 'demo' || !LIVE_OK;
+
+/* =====================================================================
+   The data façade. Demo mode reads demo-data.js; live mode fetches.
+   ===================================================================== */
+
+const argKey = args => JSON.stringify(args, Object.keys(args || {}).sort());
+const callKey = (ex, variant, tool, args) => `${ex}:${variant}:${tool}:${argKey(args)}`;
+
+async function jget(path) {
+  const r = await fetch(BASE.replace(/\/$/, '') + path);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+const api = {
+  exhibits: async () => isDemo() ? D.exhibits : jget('/api/exhibits'),
+  lessons:  async () => isDemo()
+    ? { lessons: D.lessons, primer: D.primer, primitives: D.primitives_doc }
+    : jget('/api/lessons'),
+  playground: async () => isDemo()
+    ? { presets: D.presets, pairs: D.pairs, max_question: 500 }
+    : jget('/api/playground'),
+  db: async () => isDemo() ? { counts: D.db.counts } : jget('/api/db'),
+  dbPreview: async () => isDemo() ? { tables: D.db.tables } : jget('/api/db/preview'),
+
+  source: async path => isDemo()
+    ? { path, code: D.sources[path] ?? `(${path} was not baked into this static build)` }
+    : jget('/api/source?path=' + encodeURIComponent(path)),
+
+  snippet: async (path, symbol) => {
+    if (!isDemo()) {
+      return jget(`/api/snippet?path=${encodeURIComponent(path)}&symbol=${encodeURIComponent(symbol)}`);
+    }
+    const s = D.snippets[`${path}::${symbol}`];
+    return s || { detail: `no baked snippet for ${symbol} in ${path}` };
+  },
+
+  // "What the model actually receives." Demo mode serves the captured text;
+  // live mode really does spawn the server and call the tool.
+  demo: async d => {
+    if (!isDemo()) {
+      const q = new URLSearchParams({
+        exhibit: d.exhibit, variant: d.variant, tool: d.tool, args: JSON.stringify(d.args),
+      });
+      return jget('/api/demo?' + q);
+    }
+    await sleep(220 + Math.random() * 260);      // the subprocess spawn you are not paying for
+    const hit = D.calls[callKey(d.exhibit, d.variant, d.tool, d.args)];
+    return hit || { detail: 'that call was not captured into this static build' };
+  },
+
+  reset: async () => isDemo() ? { ok: true, counts: D.db.counts } :
+    fetch(BASE.replace(/\/$/, '') + '/api/reset', { method: 'POST' }).then(r => r.json()),
+
+  config: async () => isDemo()
+    ? { model: 'captured (static)', has_key: false, context_budget: D.context_budget || 24000,
+        max_tool_calls: 20, offline_mode: 'on', offline_now: true }
+    : jget('/api/config'),
+};
+
+/* =====================================================================
+   Mode switching
+   ===================================================================== */
+
+function renderModeButtons() {
+  $('#mDemo').classList.toggle('on', MODE === 'demo');
+  $('#mLive').classList.toggle('on', MODE === 'live');
+  $('#urlbar').style.display = MODE === 'live' ? 'flex' : 'none';
+  $('#baseUrl').value = BASE;
+  $('#stat').className = 'dotstat' + (MODE === 'live' ? (LIVE_OK ? ' ok' : ' bad') : '');
+}
+
+function renderCfg() {
+  if (MODE === 'demo') {
+    $('#cfg').innerHTML = `static build · no backend<br>context budget ${num(CFG.context_budget)}`;
+  } else if (LIVE_OK) {
+    $('#cfg').innerHTML = `${esc(CFG.offline_now ? 'scripted (offline)' : CFG.model)}<br>` +
+      `context budget ${num(CFG.context_budget)} · max ${CFG.max_tool_calls} calls`;
+  } else {
+    $('#cfg').innerHTML = `<span style="color:var(--danger)">not connected</span>`;
+  }
+}
+
+function renderBanner() {
+  const b = $('#banner');
+  if (MODE === 'demo') {
+    b.innerHTML = `
+      <div class="banner demo">
+        <span class="ico">◆</span>
+        <div>
+          <b>You are in demo mode.</b> There is no backend and no API key — this page is a single
+          folder of static files. Every tool output, token count, JSON-RPC frame and code snippet
+          below was <b>captured from the real MCP servers</b> by
+          <code>scripts/build_demo_data.py</code>, which spawns them over stdio exactly the way your
+          editor would. What is <i>simulated</i> is the model's half of the conversation and the
+          passage of time, so you can watch the round-trips land instead of seeing a finished number.
+          The <b>How this works</b> tab draws the line between the two, item by item.
+          <div style="margin-top:.5rem">Want the real thing, with a live model choosing tools?
+          Run the app locally and switch to <b>Live mode</b>.</div>
+        </div>
+      </div>`;
+  } else if (LIVE_OK) {
+    b.innerHTML = `
+      <div class="banner live">
+        <span class="ico">●</span>
+        <div><b>Live mode — connected to <code>${esc(BASE)}</code>.</b>
+        Runs below spawn real MCP subprocesses over stdio and stream back over SSE.
+        ${CFG.offline_now
+          ? 'That backend has <b>no API key</b>, so the model is a scripted stand-in: mechanics are real, tool choice is not.'
+          : `The model is <b>${esc(CFG.model)}</b>, so exhibits 3 and 7 will vary between runs — that variance is the lesson.`}
+        </div>
+      </div>`;
+  } else {
+    b.innerHTML = `
+      <div class="banner err">
+        <span class="ico">✕</span>
+        <div><b>Could not reach <code>${esc(BASE)}</code>.</b>
+        Start the app with <code>uv run python -m app.main</code> and press Connect — or switch back
+        to <b>Demo mode</b>, which needs nothing at all.
+        <div style="margin-top:.5rem;font-size:.85rem">If the backend is running and this still
+        fails, it is almost certainly CORS: a page served from another origin cannot call it unless
+        the app allows this origin. The bundled <code>app/main.py</code> does.</div></div>
+      </div>`;
+  }
+}
+
+async function tryConnect() {
+  try {
+    CFG = await jget('/api/config');
+    LIVE_OK = true;
+  } catch (e) {
+    LIVE_OK = false;
+  }
+  renderModeButtons(); renderCfg(); renderBanner();
+  return LIVE_OK;
+}
+
+async function setMode(mode) {
+  MODE = mode;
+  localStorage.setItem(LS_MODE, mode);
+  if (mode === 'live') {
+    await tryConnect();
+  } else {
+    LIVE_OK = false;
+    CFG = await api.config();
+  }
+  renderModeButtons(); renderCfg(); renderBanner();
+  await rebuild();
+}
+
+$('#mDemo').onclick = () => setMode('demo');
+$('#mLive').onclick = () => setMode('live');
+$('#connectBtn').onclick = async () => {
+  BASE = $('#baseUrl').value.trim() || DEFAULT_BASE;
+  localStorage.setItem(LS_BASE, BASE);
+  await tryConnect();
+  await rebuild();
+};
+$('#baseUrl').addEventListener('keydown', e => { if (e.key === 'Enter') $('#connectBtn').click(); });
+
+/* =====================================================================
+   The demo-mode run engine.
+
+   Captured runs are replayed event by event with delays that stand in for
+   the work each step really costs: a round trip to the model, a subprocess
+   call, a big result being serialised. That is the only reason the timing
+   exists — with everything instant you cannot SEE that the bad server made
+   five round trips and the good one made a single call, and seeing it is
+   most of the lesson.
+
+   Two exhibits also get deliberate variance, because a fixed replay would
+   teach the opposite of their point:
+
+     Exhibit 3  the bad server's `search`/`find` choice is a coin flip. A
+                replay that always picks `search` would look like a bug with
+                a reliable repro. It is not one — it is a prompt with no
+                information in it, and the flip IS the exhibit.
+
+     Exhibit 7  which 3 of the 10 paraphrases fail is not fixed either. The
+                three that spell the name loosely are much likelier to miss,
+                but "likelier" is the whole finding: you cannot know the rate
+                without running it.
+
+   Both are labelled as simulated wherever they appear.
+   ===================================================================== */
+
+const SIM_DELAY = {
+  tools: 300, tool_call: 380, assistant: 520, error: 360,
+  start: 120, db: 60, grade: 90, metrics: 80, done: 40,
+};
+
+function simDelay(ev, scale) {
+  if (ev.type === 'tool_result') {
+    // A 236k-token result does not arrive as fast as a 300-token one.
+    return (300 + Math.min(950, (ev.tokens || 0) / 45)) * scale;
+  }
+  return (SIM_DELAY[ev.type] ?? 80) * scale;
+}
+
+/** Exhibit 3: rewrite a captured `search` run into a `find` run. */
+function e3AsFind(events) {
+  const call = D.calls[callKey(3, 'bad', 'find', { q: 'cost center budget exceeded' })];
+  if (!call) return events;
+  return events.map(e => {
+    switch (e.type) {
+      case 'tool_call':
+        return { ...e, name: 'find', args: { q: 'cost center budget exceeded' } };
+      case 'tool_result':
+        return { ...e, name: 'find', tokens: call.tokens, chars: call.chars, preview: call.text.slice(0, 600) };
+      case 'assistant':
+        return { ...e, text: 'Yes. A SEV2 14 months ago: a team was moved into CC-4100 without '
+          + 'raising its 200,000 budget. The fix was a 500,000 ceiling plus a pre-flight capacity check.' };
+      case 'metrics':
+        return { ...e, tool_names: ['find'], tool_result_tokens: call.tokens };
+      case 'grade':
+        return { ...e, ok: true,
+          note: 'first reached for find -- the case-file index, in 1 call(s)' };
+      default:
+        return e;
+    }
+  });
+}
+
+/** Exhibit 7: decide whether THIS paraphrase misses, then use the matching run. */
+const E7_LOOSE = { 2: 'deniz okonkwo', 4: 'D. Okonkwo', 7: 'Okonkwo' };
+
+function e7Run(runIndex) {
+  const i = runIndex % 10;
+  const loose = i in E7_LOOSE;
+  // A loose name usually misses; an exact one occasionally does too, because
+  // the model is the thing choosing what to type into `employee_name`.
+  const miss = Math.random() < (loose ? 0.85 : 0.04);
+  const src = D.runs['7:bad'][miss ? 2 : 0];        // run 2 is a captured miss, run 0 a hit
+  const name = miss ? (E7_LOOSE[i] || 'Deniz  Okonkwo') : 'Deniz Okonkwo';
+  const call = D.calls[callKey(7, 'bad', 'employee_payroll_health', { employee_name: name })]
+    || D.calls[callKey(7, 'bad', 'employee_payroll_health', { employee_name: 'Okonkwo' })];
+  const question = (D.exhibits.find(x => x.id === 7).questions || [])[i];
+  return src.map(e => {
+    if (e.type === 'start') return { ...e, question, run_index: runIndex };
+    if (e.type === 'tool_call') return { ...e, args: { employee_name: name } };
+    if (e.type === 'tool_result' && call) {
+      return { ...e, tokens: call.tokens, chars: call.chars, preview: call.text.slice(0, 600) };
+    }
+    return e;
+  });
+}
+
+/** The captured event list for one run, with per-exhibit variance applied. */
+function demoEvents(ex, variant, runIndex) {
+  const key = `${ex.id}:${variant}`;
+  const bank = D.runs[key] || [];
+  if (!bank.length) return [];
+  if (ex.id === 7) return e7Run(runIndex);
+  const events = bank[runIndex % bank.length];
+  if (ex.id === 3 && variant === 'bad' && Math.random() < 0.4) return e3AsFind(events);
+  return events;
+}
+
+/** Replay one run in demo mode, or stream one from the backend in live mode. */
+function runOnce(ex, variant, runIndex, onEvent, question) {
+  if (!isDemo()) return streamLive(ex, variant, runIndex, onEvent, question);
+  return replayDemo(ex, variant, runIndex, onEvent);
+}
+
+async function replayDemo(ex, variant, runIndex, onEvent) {
+  const events = demoEvents(ex, variant, runIndex);
+  // Long series (5 and 10 runs) would take a minute at full pace; compress
+  // them so the pass RATE arrives while the room is still watching.
+  const scale = ex.default_runs > 4 ? 0.28 : ex.default_runs > 1 ? 0.55 : 1;
+  for (const ev of events) {
+    await sleep(simDelay(ev, scale));
+    onEvent(ev);
+  }
+  onEvent({ type: 'wire', frames: D.wire[`${ex.id}:${variant}`] || D.wire['1:' + variant] || [] });
+}
+
+function streamLive(ex, variant, runIndex, onEvent, question) {
+  return new Promise(resolve => {
+    const url = `${BASE.replace(/\/$/, '')}/api/run?exhibit=${ex.id}&variant=${variant}`
+      + `&run_index=${runIndex}` + (question ? `&question=${encodeURIComponent(question)}` : '');
+    const es = new EventSource(url);
+    es.onmessage = m => {
+      const e = JSON.parse(m.data);
+      onEvent(e);
+      if (e.type === 'done') { es.close(); resolve(); }
+    };
+    es.onerror = () => {
+      es.close();
+      onEvent({ type: 'error', kind: 'transport',
+                message: 'lost the connection to the backend — is it still running?' });
+      resolve();
+    };
+  });
+}
+
+/* =====================================================================
+   Per-exhibit demo-mode explainers.
+
+   These only render in demo mode. They say what you are about to watch,
+   what to predict before pressing the button, and — the part a static
+   demo owes you — exactly which parts of it are captured and which are
+   simulated.
+   ===================================================================== */
+
+const SIM_NOTES = {
+  1: {
+    watching: `Both sides answer <b>“why did Priya Raman's paycheck fail?”</b> The bad server has
+      nineteen tools that each do one query, so the model has to be your query planner: list the
+      employees, list her paychecks, fetch the failed one, fetch its trace, then go looking for org
+      changes. Five round trips. The good server has three tools, and
+      <code>diagnose_payroll_failure()</code> does all four joins server-side, so it finishes in one.`,
+    predict: `Both answers will be right. Guess the token gap before you press the button — then
+      notice that <b>2,380 vs 366</b> understates it, because every one of those five results is
+      re-sent as input on every later turn.`,
+    real: ['all 19 and all 3 tool definitions, and what they cost in schema tokens',
+           'every tool result, byte for byte, from the real servers',
+           'the token counts (tiktoken, the same encoder the app uses)'],
+    sim: ['which tools the model picked, and in what order — replayed from one captured run',
+          'the delay between round trips, so you can count them'],
+  },
+  2: {
+    watching: `Paycheck 9002 belongs to a commission-heavy sales rep, so its payroll trace prices
+      thousands of deals one line at a time: <b>700,532 characters, about 236,000 tokens</b>. The bad
+      tool returns all of it. There is no argument you could pass to ask for less — look at the
+      signature. The good tool caps the output, states the true size, and names the tool that
+      searches the rest.`,
+    predict: `The bad run <b>cannot finish</b>. Watch the context meter go red and read the abort
+      message: one tool result is larger than the entire budget, and at 236k tokens it would also
+      overflow a real 128k window. This is the one exhibit where the bad server does not merely cost
+      more — it is impossible.`,
+    real: ['the 700,532-char trace and its 235,912-token count — measured, not estimated',
+           'the good tool\'s truncation header, verbatim',
+           'the overflow abort, produced by the real harness'],
+    sim: ['the timing; the real thing aborts as fast as the subprocess can answer'],
+    caveat: `The trace itself is the one thing this static build does not ship whole — 700 KB of
+      filler would make the teaching site heavier than the thing it is criticising. You get its head,
+      its tail, and its honest measurements. Live mode has the real 700,532 characters.`,
+  },
+  3: {
+    watching: `Two tools on the bad server. <code>search()</code> is documented
+      <i>“Search.”</i> and covers twelve months of live payroll traces. <code>find()</code> is
+      documented <i>“Find things.”</i> and covers years of closed HR case files. The question asks
+      whether a problem has <b>happened before</b> — which only the case files can answer, because
+      traces are purged after a year.`,
+    predict: `Press <b>Run bad ×5</b> and watch the dots. Some pass, some fail, and the sequence
+      changes when you run it again. That is not flakiness in the demo — it is what an untested
+      prompt looks like. And note the failure mode: picking wrong does not <b>error</b>.
+      <code>search</code> cheerfully returns <i>this cycle's</i> failure, so the model answers
+      “yes, last cycle” — confident, well-formed and useless.`,
+    real: ['both tools\' descriptions, and both indexes\' actual output',
+           'the grader, which scores the FIRST index reached for, not whether the right one was ever hit'],
+    sim: ['<b>the coin flip itself.</b> This build picks <code>search</code> about 60% of the time and '
+          + '<code>find</code> about 40%. A live model produces its own distribution — that it HAS a '
+          + 'distribution is the finding'],
+  },
+  4: {
+    watching: `One question — <b>“whose payroll keeps failing, and whose is worst?”</b> — and one
+      call on each side. The bad tool serialises the ORM: uuids, <code>null</code>s, base64 digests,
+      <code>_links</code>, microsecond timestamps, a nested manager with its own nested preferences.
+      The good tool returns a ten-row markdown table, worst first, with the verdict already computed.`,
+    predict: `<b>19,799 tokens against 342</b>, for the same question and the same rows. Then open
+      the bad output below and actually scroll it — the answer is in there, and you are asking a
+      model to divide 13 by 15 across ten nested objects while applying a definition of “unhealthy”
+      you never gave it. It routinely names the wrong worst employee.`,
+    real: ['the full 57,179-character JSON dump — scroll it, it is all here',
+           'the good server\'s table, and both token counts'],
+    sim: ['the model\'s wrong answer on the bad side, replayed from a captured run'],
+  },
+  5: {
+    watching: `⚠️ The destructive one. The bad server ships <code>run_sql("any SQL")</code> and
+      <code>delete_employee()</code> with no annotations and no confirmation. Asked to <b>“clean it
+      up so finance stops escalating”</b>, the model writes
+      <code>DELETE FROM paychecks WHERE status = 'failed'</code> — across <i>every</i> employee, not
+      just the one named — and explains how helpful it has been while the row counter drops.`,
+    predict: `<b>26 paycheck records, gone.</b> Those are payroll records, which most jurisdictions
+      require you to retain for years. Nothing malfunctioned. The model matched your description
+      against the request, exactly as designed. Then ask what the fix is — someone will say “a
+      warning in the description”, and the answer is no: a parser, a reversible alternative that
+      genuinely solves the stated problem, and a confirmation gate.`,
+    real: ['the deletion. In demo mode the counter is replayed, but that number came from a real '
+           + 'run against a real SQLite file — 143 paychecks went to 117',
+           'the good server\'s refusal message and its confirmation token'],
+    sim: ['nothing is deleted in demo mode, because there is nothing here to delete. Live mode '
+          + 'really does drop the rows, and really does reseed before every run'],
+  },
+  6: {
+    watching: `The question is trivial — <b>“what timezone are the payroll timestamps in?”</b> — and
+      one tool answers it on both servers. The difference is what surrounds that tool: 47 registered
+      tools on the bad server against 7 on the good one. <code>tools/list</code> is serialised into
+      <b>every single request</b>, so that surface is a tax paid before the user's first word.`,
+    predict: `<b>3,171 schema tokens against 1,046</b>, per turn, forever. But the tokens are the
+      smaller half: watch the bad server call <code>get_settings</code> and then
+      <code>get_config</code> — identical bodies, different names — before it finds the right tool.
+      Open the tool lists below and try to spot the near-synonyms yourself.`,
+    real: ['both full tool lists, with every name and description',
+           'the schema-token counts, measured with tiktoken over the serialised tool array'],
+    sim: ['the model\'s two wrong guesses before the right tool, replayed from a captured run'],
+  },
+  7: {
+    watching: `There is <b>no bad version of this exhibit</b>. <code>employee_payroll_health</code>
+      obeys every rule from exhibits 1–6: task-shaped, bounded output, precise description, annotated
+      read-only, alone on a two-tool surface. The good file imports it verbatim. Then the same
+      question is asked ten different ways.`,
+    predict: `Ask the room for a number first. <b>Nobody guesses 7.</b> The failure is banal: the
+      tool takes an exact <code>employee_name</code>, so “Deniz”, “D. Okonkwo”, “Okonkwo” and
+      “deniz okonkwo” all miss — and given a flat refusal with no recovery path, the model concludes
+      the person does not exist. Nothing in the code tells you this. Only running it ten times does.`,
+    real: ['the tool, its output for a name it accepts, and its dead end for a name it does not',
+           'the ten paraphrases — every one is a way a person really writes a colleague\'s name'],
+    sim: ['<b>which</b> three miss. The loosely-spelled paraphrases miss ~85% of the time here and '
+          + 'the exact ones ~4%, so the rate lands near 7/10 but the pattern moves. Run it twice. '
+          + 'That you cannot predict the individual results, only the rate, is the exhibit'],
+  },
+};
+
+function buildSimNote(ex) {
+  const n = SIM_NOTES[ex.id];
+  if (!n || !isDemo()) return null;
+  const box = el('div', 'simnote');
+  box.innerHTML = `
+    <h4>Demo mode — what you are watching</h4>
+    <p>${n.watching}</p>
+    ${n.predict ? `<div class="predict"><b>Before you press it:</b> ${n.predict}</div>` : ''}
+    <p style="margin-top:.9rem"><b>Captured from the real servers:</b></p>
+    <ul>${n.real.map(x => `<li>${x}</li>`).join('')}</ul>
+    <p style="margin-top:.7rem"><b>Simulated in this static build:</b></p>
+    <ul>${n.sim.map(x => `<li>${x}</li>`).join('')}</ul>
+    ${n.caveat ? `<p style="margin-top:.7rem;color:var(--muted);font-size:.85rem">${n.caveat}</p>` : ''}`;
+  return box;
+}
+
+/* =====================================================================
+   Boot / rebuild
+   ===================================================================== */
+
+let EXHIBITS = [], LESSONS = {}, PRIMER = {}, PRIMS_DOC = {}, PLAY = {};
+let ACTIVE = 'tab-ov';
+
+async function rebuild() {
+  EXHIBITS = await api.exhibits();
+  const lj = await api.lessons();
+  LESSONS = lj.lessons; PRIMER = lj.primer; PRIMS_DOC = lj.primitives;
+  PLAY = await api.playground();
+
+  $('#tabs').innerHTML = '';
+  ['#tab-ov', '#tab-play', '#tab-db', '#tab-prim', '#tab-how'].forEach(s => { $(s).innerHTML = ''; });
+  Object.keys(STATE).forEach(k => delete STATE[k]);
+
+  buildNav(); buildOverview(); buildExhibits(); buildPlayground();
+  buildDatabase(); buildPrimitives(); buildHow();
+  showTab(document.getElementById(ACTIVE) ? ACTIVE : 'tab-ov');
+  refreshDb();
+}
+
+function buildNav() {
+  const nav = $('#nav');
+  nav.innerHTML = '';
+  nav.append(mkTab('Overview', 'tab-ov'));
+  EXHIBITS.forEach(ex => nav.append(mkTab(`<span class="num">${ex.id}</span>${esc(ex.title)}`, `tab-${ex.id}`)));
+  nav.append(mkTab('Your question', 'tab-play'));
+  nav.append(mkTab('Database', 'tab-db'));
+  nav.append(mkTab('Primitives', 'tab-prim'));
+  nav.append(mkTab('How this works', 'tab-how'));
+}
+
+function mkTab(label, target) {
+  const b = el('button', '', label);
+  b.dataset.target = target;
+  b.onclick = () => showTab(target);
+  return b;
+}
+
+function showTab(target) {
+  ACTIVE = target;
+  [...$('#nav').children].forEach(x => x.classList.toggle('active', x.dataset.target === target));
+  document.querySelectorAll('section.tab').forEach(s => s.classList.toggle('show', s.id === target));
+  refreshDb();
+  if (target === 'tab-db') loadDatabase();
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+/* --------------------------------------------------------- overview tab */
+
+function buildOverview() {
+  const s = $('#tab-ov');
+  const pr = el('div', 'card accent', `<h3>${esc(PRIMER.title)}</h3>`);
+  PRIMER.blocks.forEach(b => pr.append(el('div', 'pblock', `<h4>${esc(b.h)}</h4><p>${rich(b.p)}</p>`)));
+  s.append(pr);
+
+  s.append(el('div', 'card accent', `
+    <h3>How to read this</h3>
+    <p>Every exhibit ships the same pitfall twice: once the way it is usually built
+    (<b style="color:var(--danger)">bad</b>) and once the way it should be built
+    (<b style="color:var(--ok)">good</b>). Both servers read one identical seeded database and are
+    spawned as real MCP subprocesses over stdio — the same transport your editor uses. The only
+    variable is tool design.</p>
+    <p>The scoreboard puts three numbers next to each other, and the third one is the interesting
+    one: <b>both answers are usually correct</b>. Bad MCP design does not announce itself with a
+    crash. It announces itself on your bill, in your context window, and in the answers that are
+    confidently wrong — which is exactly why it needs a scoreboard to be visible at all.</p>
+    <p>Prompt and completion tokens come from the model provider's own <code>usage</code> field.
+    Tool-schema tokens are counted locally with tiktoken, because no API reports how much of your
+    prompt was tool definitions — that number is exhibit 6's whole argument.</p>`));
+
+  const t = el('table', 'ov');
+  t.innerHTML = `<thead><tr><th>#</th><th>Exhibit</th><th>The pitfall</th>
+    <th>The question asked</th><th style="text-align:right">Watch</th></tr></thead>`;
+  const tb = el('tbody');
+  EXHIBITS.forEach(ex => {
+    const head = headline(ex.id);
+    const tr = el('tr', '', `<td class="n">${ex.id}</td><td><b>${esc(ex.title)}</b></td>
+      <td style="color:var(--muted)">${esc(ex.pitfall)}</td>
+      <td style="color:var(--muted)">${esc(ex.question)}</td>
+      <td class="num">${head}</td>`);
+    tr.onclick = () => showTab(`tab-${ex.id}`);
+    tb.append(tr);
+  });
+  t.append(tb);
+  const c = el('div', 'card');
+  c.append(el('h3', '', 'The seven exhibits'));
+  c.append(t);
+  c.append(el('p', '', `<span style="color:var(--muted);font-size:.82rem">
+    Numbers are from the captured runs. Live runs vary — and that variance is exhibits 3 and 7.
+    </span>`));
+  s.append(c);
+}
+
+/** The headline number for the overview table, straight out of the captured runs. */
+function headline(id) {
+  const pick = (key, field) => {
+    const runs = D.runs[key];
+    if (!runs) return null;
+    const m = runs[0].find(e => e.type === 'metrics');
+    return m ? m[field] : null;
+  };
+  const pair = (b, g, suffix = '') =>
+    `<span class="b">${num(b)}</span><span class="arw">→</span><span class="g">${num(g)}</span>${suffix}`;
+  switch (id) {
+    case 1: return pair(pick('1:bad', 'tool_calls'), pick('1:good', 'tool_calls')) + ' calls';
+    case 2: return pair(pick('2:bad', 'tool_result_tokens'), pick('2:good', 'tool_result_tokens')) + ' result tokens';
+    case 3: return '<span class="b">a coin flip</span>';
+    case 4: return pair(pick('4:bad', 'tool_result_tokens'), pick('4:good', 'tool_result_tokens')) + ' result tokens';
+    case 5: return '<span class="b">−26 paychecks</span>';
+    case 6: return pair(pick('6:bad', 'schema_tokens'), pick('6:good', 'schema_tokens')) + ' schema tokens';
+    case 7: return '<span class="b">7/10</span> pass rate';
+    default: return '';
+  }
+}
+
+/* --------------------------------------------------------- exhibit tabs */
+
+function buildExhibits() {
+  const host = $('#tabs');
+  EXHIBITS.forEach(ex => {
+    const s = el('section', 'tab');
+    s.id = `tab-${ex.id}`;
+
+    s.append(el('div', 'card', `
+      <div class="pitfall">Exhibit ${ex.id} — ${esc(ex.pitfall)}</div>
+      <div class="question">${esc(ex.question)}</div>
+      <div class="watch"><b>What to watch:</b> ${esc(ex.watch)}</div>`));
+
+    const note = buildSimNote(ex);
+    if (note) s.append(note);
+
+    const bar = el('div', 'runbar');
+    const sides = ex.paired ? ['bad', 'good'] : ['bad'];
+    const n = ex.default_runs;
+    sides.forEach(v => {
+      const b = el('button', v === 'good' ? '' : 'ghost', `Run ${v}${n > 1 ? ` ×${n}` : ''}`);
+      b.onclick = () => runSide(ex, v, n);
+      b.dataset.run = '1';
+      bar.append(b);
+    });
+    if (ex.paired) {
+      const both = el('button', '', `Run both${n > 1 ? ` ×${n}` : ''}`);
+      both.onclick = async () => { await runSide(ex, 'bad', n); await runSide(ex, 'good', n); };
+      both.dataset.run = '1';
+      bar.append(both);
+    }
+    bar.append(el('div', 'note', ex.mutates_db
+      ? (isDemo() ? 'destructive exhibit — replayed, nothing on your machine is touched'
+                  : 'this exhibit can delete data — reseeded before every run')
+      : ''));
+    s.append(bar);
+
+    if (ex.mutates_db) {
+      s.append(el('div', 'card', '<h3>Database state</h3><div class="dbpanel" data-db="1"></div>'));
+    }
+
+    s.append(buildCompare(ex));
+
+    const split = el('div', 'split');
+    sides.forEach(v => split.append(buildSide(ex, v)));
+    s.append(split);
+
+    if (ex.id === 6) s.append(buildToolSurfaces());
+    s.append(buildLesson(ex));
+    host.append(s);
+  });
+}
+
+function buildCompare(ex) {
+  const box = el('div', 'compare');
+  box.dataset.compare = String(ex.key ?? ex.id);
+  box.innerHTML = `<h4>Side by side</h4><table><thead><tr><th></th><th>bad</th><th>good</th>
+    <th>gap</th></tr></thead><tbody></tbody></table>`;
+  return box;
+}
+
+function buildSide(ex, v) {
+  const side = el('div', `side ${v}`);
+  const file = v === 'bad' ? ex.bad_file : ex.good_file;
+  side.innerHTML = `
+    <div class="head">
+      <span class="tag">${ex.paired ? v.toUpperCase() : 'THE ONLY SERVER'}</span>
+      <span style="font-size:.86rem;color:var(--muted)">${v === 'bad' ? 'the usual way' : 'the designed way'}</span>
+      <span class="file" data-openfile="${file}">${esc(file)}</span>
+    </div>
+    <div class="body">
+      <div class="choice">${esc(v === 'bad' ? ex.bad_choice : ex.good_choice)}</div>
+      <div class="metrics">
+        <div class="metric${ex.focus === 'calls' ? ' focus' : ''}"><div class="v" data-m="calls">–</div><div class="k">tool calls</div></div>
+        <div class="metric${ex.focus === 'schema' ? ' focus' : ''}"><div class="v" data-m="schema">–</div><div class="k">schema tokens</div></div>
+        <div class="metric${ex.focus === 'results' ? ' focus' : ''}"><div class="v" data-m="results">–</div><div class="k">result tokens</div></div>
+        <div class="metric"><div class="v" data-m="total">–</div><div class="k">billed tokens</div></div>
+      </div>
+      <div class="meter"><i></i></div>
+      <div class="meter-lbl">context budget</div>
+      <div class="ratebox" style="display:none;margin-top:.9rem">
+        <div class="rate">–</div><div class="dots"></div>
+        <div class="sub"></div>
+      </div>
+      <div class="verdict" style="display:none"></div>
+      <div class="trace"></div>
+      <details class="src"><summary>view the wire (JSON-RPC frames)</summary><div class="wire"></div></details>
+    </div>`;
+  STATE[`${ex.key ?? ex.id}:${v}`] = { side, runs: [] };
+  return side;
+}
+
+/* --------------------------------------------------------- tool surfaces */
+
+/** Exhibit 6's argument, made browsable: 47 names against 7. */
+function buildToolSurfaces() {
+  const card = el('div', 'card');
+  card.innerHTML = `<h3>The two tool surfaces, in full</h3>
+    <p>This is what <code>tools/list</code> returns, and therefore what is serialised into every
+    request you send the model — whether or not any of it gets called. Duplicated and near-synonym
+    names are highlighted. Two of them (<code>get_config</code> / <code>get_settings</code>,
+    <code>list_alerts</code> / <code>list_events</code>) have identical bodies, and one tool is
+    registered twice from two different modules, so the second registration silently loses. You
+    cannot see any of that by reading a single file.</p>`;
+  const split = el('div', 'split');
+  ['bad', 'good'].forEach(v => {
+    const surface = D.tools[`6:${v}`];
+    const box = el('div', `side ${v}`);
+    if (!surface) { box.innerHTML = '<div class="body">not captured</div>'; split.append(box); return; }
+    const seen = {};
+    surface.tools.forEach(t => { seen[t.name] = (seen[t.name] || 0) + 1; });
+    const SUSPECT = ['get_config', 'get_settings', 'list_alerts', 'list_events',
+                     'get_paycheck_trace', 'search', 'find', 'lookup'];
+    box.innerHTML = `
+      <div class="head">
+        <span class="tag">${v.toUpperCase()}</span>
+        <span style="font-size:.86rem;color:var(--muted)">${surface.count} tools ·
+          ${num(surface.schema_tokens)} schema tokens per turn</span>
+      </div>
+      <div class="body">
+        <div class="toolgrid">${surface.tools.map(t =>
+          `<div class="toolpill${SUSPECT.includes(t.name) ? ' dup' : ''}" title="${esc(t.description).slice(0, 300)}">${esc(t.name)}</div>`
+        ).join('')}</div>
+        <div style="margin-top:.8rem;color:var(--muted);font-size:.8rem">Hover any name for its
+          description — the text the model is choosing on.</div>
+      </div>`;
+    split.append(box);
+  });
+  card.append(split);
+  return card;
+}
+
+/* ------------------------------------------------------- file + snippets */
+
+// Every file reference on the page -- panel headers, inline [[refs]], snippet
+// headers, read-more links -- opens the source right below where you clicked,
+// so you never lose your place in the lesson.
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-openfile]');
+  if (t) openFile(t.dataset.openfile, t);
+});
+
+async function openFile(path, near) {
+  const host = near.closest('.card, .side .body, .snip') || near.parentElement;
+  const existing = host.querySelector(`details.code-src[data-path="${path}"]`);
+  if (existing) { existing.open = !existing.open; existing.scrollIntoView({ block: 'nearest' }); return; }
+  const d = el('details', 'src code-src');
+  d.dataset.path = path;
+  d.open = true;
+  d.innerHTML = `<summary>${esc(path)}</summary><pre class="code">loading…</pre>`;
+  host.append(d);
+  try {
+    const r = await api.source(path);
+    d.querySelector('pre').textContent = r.detail ? 'could not load: ' + r.detail : r.code;
+  } catch (err) {
+    d.querySelector('pre').textContent = 'could not load: ' + err.message;
+  }
+  d.scrollIntoView({ block: 'nearest' });
+}
+
+/* ------------------------------------------------------------- lesson */
+
+function buildLesson(ex) {
+  const L = LESSONS[String(ex.id)];
+  const card = el('div', 'card lesson');
+  if (!L) return card;
+  card.append(el('h2', '', esc(L.headline)));
+  card.append(el('div', 'lblock', `<h4>What is actually happening</h4><p>${rich(L.what_happens)}</p>`));
+  card.append(el('div', 'lblock', `<h4>Why anyone builds it this way</h4><p>${rich(L.why_tempting)}</p>`));
+  card.append(el('div', 'lblock cost', `<h4>What it costs</h4><p>${rich(L.what_it_costs)}</p>`));
+  L.snippets.forEach(sn => card.append(buildSnippet(sn)));
+  L.demos.forEach(d => card.append(buildDemo(d)));
+  card.append(el('div', 'rulebox', `<h4>The rule</h4><p>${rich(L.rule)}</p>`));
+  if (L.read_more.length) {
+    card.append(el('div', 'readmore', 'Read the whole thing: ' + L.read_more
+      .map(r => `<span class="fileref" data-openfile="${r.path}">${esc(r.label)}</span>`)
+      .join(' · ')));
+  }
+  return card;
+}
+
+function buildSnippet(sn) {
+  const box = el('div', 'snip');
+  box.innerHTML = `
+    <div class="shead">
+      <span class="slabel">${esc(sn.label)}</span>
+      <span class="sref" data-openfile="${sn.path}">${esc(sn.path)}</span>
+    </div>
+    ${sn.note ? `<div class="snote">${rich(sn.note)}</div>` : ''}
+    <pre>loading…</pre>`;
+  // Snippets are extracted from the real source -- by the server at request
+  // time in live mode, by the build script in demo mode -- so the page cannot
+  // drift out of sync with the code the lesson is describing.
+  api.snippet(sn.path, sn.symbol).then(j => {
+    const pre = box.querySelector('pre');
+    if (j.detail) { pre.textContent = 'could not load: ' + j.detail; return; }
+    const w = String(j.end_line).length;
+    pre.innerHTML = j.code.split('\n')
+      .map((ln, i) => `<span class="gut">${String(j.start_line + i).padStart(w)}</span>  ${esc(ln)}`)
+      .join('\n');
+    box.querySelector('.sref').textContent = `${j.path}:${j.start_line}`;
+  }).catch(e => { box.querySelector('pre').textContent = String(e); });
+  return box;
+}
+
+function buildDemo(d) {
+  const box = el('div', `demo ${d.variant}`);
+  const call = `${d.tool}(${Object.entries(d.args).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ')})`;
+  box.innerHTML = `
+    <div class="dhead">
+      <span class="dlabel">${esc(d.label)}</span>
+      <span class="dcall">${esc(d.variant)} server · ${esc(call)}</span>
+      <span class="dcost"></span>
+      <button>${isDemo() ? 'Show it' : 'Call it'}</button>
+    </div>
+    ${d.note ? `<div class="dnote">${rich(d.note)}</div>` : ''}`;
+  const btn = box.querySelector('button');
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = '…';
+    try {
+      const j = await api.demo(d);
+      let pre = box.querySelector('pre');
+      if (!pre) { pre = el('pre'); box.append(pre); }
+      pre.textContent = j.detail ? 'error: ' + j.detail : j.text;
+      box.querySelector('.dcost').textContent = j.detail ? ''
+        : `${num(j.tokens)} tokens · ${num(j.chars)} chars`
+          + (j.elided ? '  (truncated for this static build)' : '');
+    } catch (err) {
+      let pre = box.querySelector('pre');
+      if (!pre) { pre = el('pre'); box.append(pre); }
+      pre.textContent = 'error: ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = isDemo() ? 'Show it again' : 'Call it again';
+    }
+  };
+  return box;
+}
+
+/* ------------------------------------------------------------- running */
+
+function setBusy(b) {
+  BUSY = b;
+  document.querySelectorAll('[data-run]').forEach(x => { x.disabled = b; });
+}
+
+async function runSide(ex, variant, runs, question) {
+  if (BUSY) return;
+  setBusy(true);
+  const st = STATE[`${ex.key ?? ex.id}:${variant}`];
+  st.runs = [];
+  const trace = st.side.querySelector('.trace');
+  trace.innerHTML = '';
+  st.side.querySelector('.wire').innerHTML = '';
+  st.side.querySelector('.verdict').style.display = 'none';
+  st.side.querySelector('.ratebox').style.display = runs > 1 ? 'block' : 'none';
+  st.side.querySelector('.dots').innerHTML = '';
+  st.side.querySelector('.rate').textContent = '–';
+  st.side.querySelectorAll('[data-m]').forEach(n => { n.textContent = '–'; delete n.dataset.raw; });
+  try {
+    for (let i = 0; i < runs; i++) {
+      if (runs > 1) addLine(trace, 'tools', `── run ${i + 1} of ${runs} ──`);
+      await oneRun(ex, variant, i, st, question);
+    }
+  } finally {
+    setBusy(false);
+    refreshDb();
+  }
+}
+
+function addLine(trace, cls, html) {
+  const n = el('div', `ln ${cls}`, html);
+  trace.append(n);
+  trace.scrollTop = trace.scrollHeight;
+  return n;
+}
+
+function oneRun(ex, variant, runIndex, st, question) {
+  const trace = st.side.querySelector('.trace');
+  const cur = { metrics: null, grade: null, before: null, after: null };
+  return runOnce(ex, variant, runIndex, e => {
+    switch (e.type) {
+      case 'start':
+        if (e.offline && !isDemo()) addLine(trace, 'err',
+          'OFFLINE — scripted stand-in for the model, not a real run. '
+          + 'Deterministic by design: exhibits 3 and 7 only vary live.');
+        if (ex.questions && ex.questions.length > 1) addLine(trace, 'tools', `Q: ${esc(e.question)}`);
+        break;
+      case 'db':
+        cur[e.when] = e.counts;
+        if (e.when === 'before') renderDb(e.counts, null);
+        else renderDb(cur.before, e.counts);
+        break;
+      case 'tools':
+        addLine(trace, 'tools', `${e.count} tool(s) offered · ${num(e.schema_tokens)} schema tokens`);
+        setMetric(st.side, 'schema', e.schema_tokens);
+        break;
+      case 'tool_call':
+        addLine(trace, 'call', `→ ${esc(e.name)}(${esc(JSON.stringify(e.args).slice(1, -1))})`);
+        break;
+      case 'tool_result': {
+        const big = e.tokens > CFG.context_budget / 3;
+        const line = addLine(trace, 'res' + (big ? ' big' : ''),
+          `← ${num(e.tokens)} tokens / ${num(e.chars)} chars${e.is_error ? '  [tool error]' : ''} `);
+        if (e.preview) attachPeek(line, e.preview, e.chars);
+        break;
+      }
+      case 'assistant': addLine(trace, 'ans', esc(e.text)); break;
+      case 'error': addLine(trace, 'err', `✕ ${esc(e.message)}`); break;
+      case 'metrics':
+        cur.metrics = e;
+        setMetric(st.side, 'calls', e.tool_calls);
+        setMetric(st.side, 'results', e.tool_result_tokens);
+        setMetric(st.side, 'total', e.total_tokens);
+        setMeter(st.side, e.schema_tokens + e.tool_result_tokens);
+        break;
+      case 'grade': cur.grade = e; break;
+      case 'wire': renderWire(st.side, e.frames); break;
+    }
+  }, question).then(() => {
+    st.runs.push(cur);
+    renderVerdict(st, ex);
+    compareSides(ex);
+  });
+}
+
+/** Let people read what the model was actually handed, inline in the trace. */
+function attachPeek(line, preview, chars) {
+  const link = el('span', 'peek', 'peek at what the model got');
+  line.append(link);
+  link.onclick = () => {
+    const open = line.nextElementSibling;
+    if (open && open.classList.contains('peeked')) { open.remove(); return; }
+    const pre = el('pre', 'peeked');
+    pre.textContent = preview + (chars > preview.length
+      ? `\n\n… first ${num(preview.length)} of ${num(chars)} characters …` : '');
+    line.after(pre);
+  };
+}
+
+function setMetric(side, key, val) {
+  const n = side.querySelector(`[data-m="${key}"]`);
+  n.textContent = num(val);
+  n.dataset.raw = val;
+  n.parentElement.classList.remove('bump');
+  void n.parentElement.offsetWidth;      // restart the animation
+  n.parentElement.classList.add('bump');
+}
+
+function setMeter(side, used) {
+  const m = side.querySelector('.meter'), i = m.querySelector('i');
+  const pct = Math.min(100, (used / CFG.context_budget) * 100);
+  i.style.width = pct + '%';
+  m.classList.toggle('warn', pct > 60 && pct < 100);
+  m.classList.toggle('over', pct >= 100);
+  side.querySelector('.meter-lbl').textContent =
+    `${num(used)} / ${num(CFG.context_budget)} context budget${pct >= 100 ? '  — OVERFLOW' : ''}`;
+}
+
+function renderWire(side, frames) {
+  const host = side.querySelector('.wire');
+  host.innerHTML = (frames || []).map(f => {
+    const out = f.dir === 'client->server';
+    const body = JSON.stringify(f.body || {});
+    return `<div class="f"><span class="d ${out ? 'out' : 'in'}">${out ? 'C→S' : 'S→C'}</span>`
+      + `<span class="m">${esc(f.method || '')}</span>`
+      + `<span class="b">${esc(body.length > 220 ? body.slice(0, 220) + '…' : body)}</span></div>`;
+  }).join('');
+}
+
+function renderVerdict(st, ex) {
+  const box = st.side.querySelector('.verdict');
+  const last = st.runs[st.runs.length - 1];
+  if (!last || !last.grade) return;
+  box.style.display = 'block';
+  const ok = last.grade.ok;
+  box.className = 'verdict ' + (ok === null ? 'open' : ok ? 'pass' : 'fail');
+  box.innerHTML = `<b>${ok === null ? 'no grader' : ok ? 'pass' : 'fail'}</b>${esc(last.grade.note)}`;
+
+  if (ex.default_runs > 1) {
+    const rb = st.side.querySelector('.ratebox');
+    rb.style.display = 'block';
+    const passes = st.runs.filter(r => r.grade && r.grade.ok).length;
+    rb.querySelector('.rate').textContent = `${passes}/${st.runs.length}`;
+    rb.querySelector('.rate').style.color =
+      passes === st.runs.length ? 'var(--ok)' : passes === 0 ? 'var(--danger)' : 'var(--warn)';
+    rb.querySelector('.dots').innerHTML = st.runs
+      .map(r => `<span class="dot ${r.grade && r.grade.ok ? 'pass' : 'fail'}"></span>`).join('');
+    rb.querySelector('.sub').textContent = ex.id === 7
+      ? 'ten paraphrases of one question'
+      : 'five runs of one question';
+  }
+}
+
+/** The number that actually lands: bad next to good, with the multiple. */
+function compareSides(ex) {
+  if (!ex.paired) return;
+  const k = ex.key ?? ex.id;
+  const bad = STATE[`${k}:bad`], good = STATE[`${k}:good`];
+  const box = document.querySelector(`[data-compare="${k}"]`);
+  if (!box || !bad.runs.length || !good.runs.length) return;
+  const rows = [
+    ['tool calls', 'tool_calls', 'calls'],
+    ['schema tokens per turn', 'schema_tokens', 'schema'],
+    ['result tokens', 'tool_result_tokens', 'results'],
+  ];
+  const tb = box.querySelector('tbody');
+  tb.innerHTML = rows.map(([label, field, focus]) => {
+    const b = bad.runs.at(-1).metrics?.[field], g = good.runs.at(-1).metrics?.[field];
+    if (b == null || g == null) return '';
+    const gap = g > 0 ? (b / g) : null;
+    const hero = ex.focus === focus ? ' class="hero"' : '';
+    return `<tr${hero}><td>${label}</td><td>${num(b)}</td><td>${num(g)}</td>
+      <td class="gap">${gap ? (gap >= 2 ? `${gap.toFixed(1)}×` : gap < 1 ? `${(1 / gap).toFixed(1)}× cheaper` : '—') : '—'}</td></tr>`;
+  }).join('');
+  box.classList.add('show');
+}
+
+/* ------------------------------------------------------------ database */
+
+function renderDb(before, after) {
+  document.querySelectorAll('[data-db]').forEach(panel => {
+    const counts = after || before;
+    if (!counts) return;
+    panel.innerHTML = Object.entries(counts).map(([k, v]) => {
+      const lost = before && after ? before[k] - after[k] : 0;
+      return `<div class="dbcell${lost > 0 ? ' lost' : ''}">${esc(k)} <b>${num(v)}</b>${
+        lost > 0 ? ` <span>(−${num(lost)})</span>` : ''}</div>`;
+    }).join('');
+  });
+}
+
+async function refreshDb() {
+  try {
+    const j = await api.db();
+    if (!document.querySelector('.dbcell.lost')) renderDb(j.counts, null);
+  } catch { /* live backend gone; the banner already says so */ }
+}
+
+function buildDatabase() {
+  const s = $('#tab-db');
+  s.append(el('div', 'card accent', `
+    <h3>The data both servers read</h3>
+    <p>Nothing about this domain is clever, on purpose — you should be able to guess what a question
+    means before you read the answer. Ten employees in four departments, the semi-monthly paychecks
+    each of them is issued, the org changes that keep breaking payroll, and the closed HR case files
+    that record what happened the last time.</p>
+    <p><b>Both servers read these exact rows, with the same helper functions.</b> The only variable
+    in every exhibit is how the tools on top are shaped, described and guarded. That is why the
+    scoreboard means anything: if the data differed, the numbers would be a magic trick.</p>
+    <p>Two rows are worth finding before you start. <b>Paycheck 9001</b> is Priya Raman's failure —
+    cost center CC-4100 exhausted, two hours after a reorg moved a team into it. <b>Paycheck 9002</b>
+    is Marcus Bell's, and its <code>trace</code> column holds the 700,532-character monster that
+    exhibit 2 is about. The 14-month-old <b>SEV2 case file</b> is the precedent exhibit 3 is hunting
+    for — and note that payroll traces are purged after a year, which is exactly why the live trace
+    index <i>cannot</i> answer “has this happened before”.</p>
+    <div class="dbpanel" data-db="1" style="margin-top:1rem"></div>`));
+  s.append(el('div', 'dbtables', ''));
+}
+
+async function loadDatabase() {
+  const host = $('#tab-db .dbtables');
+  if (!host || host.dataset.loaded === MODE) return;
+  host.innerHTML = '<div class="card"><p>loading…</p></div>';
+  try {
+    const j = await api.dbPreview();
+    host.innerHTML = '';
+    j.tables.forEach(t => {
+      const card = el('div', 'card dbtable');
+      card.innerHTML = `
+        <div class="dbhead"><h3>${esc(t.name)}</h3>
+          <span>${num(t.rows.length)} rows · ${t.columns.length} columns</span></div>
+        <div class="dbscroll"><table class="dbpreview">
+          <thead><tr>${t.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+          <tbody>${t.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></div>`;
+      host.append(card);
+    });
+    host.dataset.loaded = MODE;
+  } catch (err) {
+    host.innerHTML = `<div class="card"><p>could not load: ${esc(err.message)}</p></div>`;
+  }
+}
+
+/* ---------------------------------------------------------- playground */
+
+function buildPlayground() {
+  const s = $('#tab-play');
+  s.append(el('div', 'card accent', `
+    <h3>Ask your own question</h3>
+    <p>Every exhibit above asks a question I chose, graded by a substring match. This tab hands the
+    keyboard over: type anything, pick which <b>pair of servers</b> to point it at, and watch both
+    answer side by side.</p>
+    <p>There is deliberately <b>no grader</b> here. A substring check written for “why did Priya
+    Raman's paycheck fail” says nothing about a question someone just invented, and faking a verdict
+    would be worse than having none — so the run reports <code>you judge</code>. That is also the
+    honest version of the lesson: a real MCP server gets questions its author never imagined, and
+    the only way to know how it behaves is to ask.</p>
+    <p>It does report one thing mechanically, because that one is not a matter of opinion: if your
+    question caused a delete, the verdict says so and names the row count.</p>`));
+
+  if (isDemo()) {
+    s.append(el('div', 'simnote', `
+      <h4>Demo mode — why this tab is the one that cannot be faked</h4>
+      <p>Everything else on this site is a replay of something that really happened. This tab is
+      different in kind: it needs a <b>live model</b>, because the whole point is a question nobody
+      wrote a script for. Replaying a canned sequence against words you just typed would look like
+      an answer while being pure theatre, and you would have no way to tell.</p>
+      <p>So the presets below are <b>annotated instead of run</b>. Each one names the pair of servers
+      it targets, what the bad server does with it, and what to watch for. Then run the app locally
+      with a key and ask it yourself — that is the moment the lesson stops being a demo.</p>
+      <p style="margin-top:.7rem"><b>Try this at the end of a talk:</b> add <code>why-mcp-bad-e3</code>
+      to your own editor from the repo's <code>.mcp.json</code> and ask it whether the cost-centre
+      budget problem has happened before. Feeling a bad tool description misfire inside your own
+      editor is what makes exhibit 3 stick.</p>`));
+
+    const card = el('div', 'card');
+    card.innerHTML = `<h3>The four questions that misfire most instructively</h3>
+      <p style="margin-bottom:.9rem">Each is wired to the server pair that makes its failure legible.</p>`;
+    const tbl = el('table', 'ov');
+    tbl.innerHTML = `<thead><tr><th>Ask this</th><th>Against</th><th>Because</th></tr></thead>`;
+    const tb = el('tbody');
+    (PLAY.presets || []).forEach(p => {
+      const pair = (PLAY.pairs || []).find(x => x.id === p.pair);
+      const tr = el('tr', '', `<td style="max-width:34ch">“${esc(p.q)}”</td>
+        <td><b>pair ${p.pair}</b><br><span style="color:var(--muted);font-size:.8rem">${esc(pair ? pair.title : '')}</span></td>
+        <td style="color:var(--muted)">${esc(p.why)}</td>`);
+      tr.onclick = () => showTab(`tab-${p.pair}`);
+      tb.append(tr);
+    });
+    tbl.append(tb);
+    card.append(tbl);
+    s.append(card);
+
+    s.append(el('div', 'card', `
+      <h3>Run it for real</h3>
+      <pre class="code">git clone https://git.krishnarajthadesar.in/krishnaraj/why_mcp
+cd why_mcp
+uv sync
+cp .env.example .env          # add your OPENAI_API_KEY
+uv run python -m app.main     # then open http://localhost:1184</pre>
+      <p style="margin-top:.8rem">With the app running you can also flip this page to
+      <b>Live mode</b> in the header and drive that backend from here.</p>`));
+    return;
+  }
+
+  // ---- live mode: the real playground -------------------------------
+  const card = el('div', 'card');
+  card.innerHTML = `<h3>Your question</h3>`;
+  const ta = el('textarea', 'q');
+  ta.placeholder = 'Has this cost centre budget problem happened before?';
+  card.append(ta);
+
+  const chips = el('div', 'chips');
+  const sel = el('select', 'pair');
+  (PLAY.pairs || []).forEach(p => {
+    const o = el('option', '', `${p.id} — ${esc(p.title)}`);
+    o.value = p.id;
+    sel.append(o);
+  });
+  (PLAY.presets || []).forEach(p => {
+    const c = el('button', 'chip', `${esc(p.q)}<span class="why">${esc(p.why)}</span>`);
+    c.onclick = () => { ta.value = p.q; sel.value = p.pair; buildPlayPanels(+p.pair); };
+    chips.append(c);
+  });
+  card.append(chips);
+
+  const bar = el('div', 'runbar');
+  bar.append(el('span', '', '<span style="color:var(--muted);font-size:.85rem">against pair</span>'));
+  bar.append(sel);
+  const go = el('button', '', 'Ask both servers');
+  go.dataset.run = '1';
+  bar.append(go);
+  card.append(bar);
+  s.append(card);
+
+  const host = el('div');
+  host.id = 'playPanels';
+  s.append(host);
+
+  sel.onchange = () => buildPlayPanels(+sel.value);
+  go.onclick = async () => {
+    const q = ta.value.trim();
+    if (!q) return;
+    const ex = buildPlayPanels(+sel.value);
+    await runSide(ex, 'bad', 1, q);
+    await runSide(ex, 'good', 1, q);
+  };
+  if (PLAY.pairs && PLAY.pairs.length) buildPlayPanels(PLAY.pairs[0].id);
+
+  // `key: 'play'` keeps these panels out of the exhibit tabs' STATE slots --
+  // without it, asking your own question against pair 3 would quietly write its
+  // results into exhibit 3's panels instead of these.
+  function buildPlayPanels(id) {
+    const base = EXHIBITS.find(x => x.id === id);
+    const ex = { ...base, key: 'play' };
+    host.innerHTML = '';
+    host.append(buildCompare(ex));
+    const split = el('div', 'split');
+    ['bad', 'good'].forEach(v => split.append(buildSide(ex, v)));
+    host.append(split);
+    return ex;
+  }
+}
+
+/* ---------------------------------------------------------- primitives */
+
+const PRIM_ACTIONS = [
+  { key: 'tools', label: 'tools/list', note: 'What the model is offered, and what it costs you every turn.' },
+  { key: 'resources', label: 'resources/list', note: 'Note the template — it is advertised separately and fetches nothing until an id is filled in.' },
+  { key: 'read_resource', label: 'resources/read hr://employees', note: 'No tool call. The model never spent a turn deciding to fetch this.' },
+  { key: 'prompts', label: 'prompts/list', note: 'These are what become slash commands in a client like Claude Code.' },
+  { key: 'get_prompt', label: 'prompts/get payroll_triage', note: 'The server owns the checklist — improving your triage procedure means editing your server.' },
+  { key: 'elicitation', label: 'elicitation — the server asks the human', note: 'Watch for the S→C frame. The client answers this, not a model, which is why it works with no API key at all.' },
+  { key: 'sampling', label: 'sampling — the server borrows your model', note: 'The only primitive here that needs a real completion.', needsKey: true },
+];
+
+function buildPrimitives() {
+  const s = $('#tab-prim');
+  const doc = el('div', 'card accent', `<h3>${esc(PRIMS_DOC.title)}</h3>`);
+  PRIMS_DOC.blocks.forEach(b => doc.append(el('div', 'pblock', `<h4>${esc(b.h)}</h4><p>${rich(b.p)}</p>`)));
+  s.append(doc);
+
+  if (isDemo()) {
+    s.append(el('div', 'simnote', `
+      <h4>Demo mode — these frames are real</h4>
+      <p>Each button below prints a result and the <b>JSON-RPC frames that produced it</b>, captured
+      by really running that primitive against the good server over stdio. Reading
+      <code>initialize</code> → <code>tools/list</code> → <code>tools/call</code> scroll past is how
+      the protocol stops being abstract.</p>
+      <p><b>Sampling is the exception</b>, and it is the interesting exception. Sampling means your
+      server sends <code>sampling/createMessage</code> <i>to the client</i> and the client's model
+      answers — so it cannot be captured without a real completion behind it. The button below
+      explains what would happen instead of pretending. Run it live to see the <code>S→C</code>
+      request frame, which is the only place in this whole demo where a request travels that
+      direction.</p>`));
+  }
+
+  const card = el('div', 'card');
+  card.innerHTML = `<h3>Fire one and read the wire</h3>`;
+  PRIM_ACTIONS.forEach(a => {
+    const box = el('div', 'demo good');
+    box.innerHTML = `
+      <div class="dhead">
+        <span class="dlabel">${esc(a.label)}</span>
+        <span class="dcost"></span>
+        <button>${isDemo() ? 'Show it' : 'Fire it'}</button>
+      </div>
+      <div class="dnote">${esc(a.note)}</div>`;
+    const btn = box.querySelector('button');
+    btn.onclick = () => firePrimitive(a, box, btn);
+    card.append(box);
+  });
+  s.append(card);
+
+  const snips = el('div', 'card');
+  snips.innerHTML = `<h3>The code behind each primitive</h3>`;
+  (PRIMS_DOC.snippets || []).forEach(sn => snips.append(buildSnippet(sn)));
+  s.append(snips);
+}
+
+async function firePrimitive(a, box, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  const put = (text, frames) => {
+    let pre = box.querySelector('pre');
+    if (!pre) { pre = el('pre'); box.append(pre); }
+    pre.textContent = text;
+    let w = box.querySelector('.wire');
+    if (frames) {
+      if (!w) {
+        const d = el('details', 'src');
+        d.innerHTML = '<summary>view the wire (JSON-RPC frames)</summary><div class="wire"></div>';
+        box.append(d);
+        w = d.querySelector('.wire');
+      }
+      renderWire(box, frames);
+    }
+  };
+  try {
+    if (isDemo()) {
+      await sleep(260);
+      if (a.needsKey) {
+        put('Sampling needs a real model behind the client.\n\n'
+          + 'The good server\'s summarise_case tool calls ctx.session.create_message(...), which\n'
+          + 'sends a sampling/createMessage request BACK to the client. The client — not the\n'
+          + 'server — runs the completion and returns it. Your server gets an LLM with no API\n'
+          + 'key and no bill, because the inference is billed to whoever is running the client.\n\n'
+          + 'That also means a server can quietly spend your tokens, which is why clients gate\n'
+          + 'this and why many do not implement it at all.\n\n'
+          + 'Run the app locally with an API key and fire this in Live mode to watch the S->C\n'
+          + 'frame cross the wire.');
+        return;
+      }
+      const hit = D.primitives[a.key];
+      if (!hit) { put('not captured into this static build'); return; }
+      put(hit.result, hit.frames);
+    } else {
+      const r = await fetch(BASE.replace(/\/$/, '') + '/api/primitive', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: a.key, arg: '' }),
+      });
+      const j = await r.json();
+      put(j.detail ? 'error: ' + j.detail : j.result, j.frames);
+    }
+  } catch (err) {
+    put('error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = isDemo() ? 'Show it again' : 'Fire it again';
+  }
+}
+
+/* ------------------------------------------------------ how this works */
+
+function buildHow() {
+  const s = $('#tab-how');
+
+  s.append(el('div', 'card accent', `
+    <h3>Two modes, and the line between them</h3>
+    <p>This page is a single folder of static files — one HTML file, one generated data file, no
+    server. That is a deliberate constraint: a teaching site that only works when a Python process
+    is running is a teaching site nobody opens twice. But a static demo has an obvious failure mode,
+    which is quietly inventing its numbers, so the line between what is captured and what is
+    simulated is drawn explicitly, here and on every exhibit.</p>`));
+
+  const t = el('table', 'ov');
+  t.innerHTML = `<thead><tr><th style="width:26%">Thing on screen</th>
+    <th style="width:37%">Demo mode</th><th style="width:37%">Live mode</th></tr></thead>`;
+  const rows = [
+    ['Tool outputs',
+     '<b>Real.</b> Captured by spawning the actual MCP servers over stdio and calling the actual tools.',
+     '<b>Real.</b> Spawned and called right now, in front of you.'],
+    ['Token counts',
+     '<b>Real.</b> Measured with tiktoken over the captured text — the same encoder the app uses.',
+     '<b>Real.</b> Prompt and completion tokens come from the provider\'s own <code>usage</code> field.'],
+    ['Schema tokens',
+     '<b>Real.</b> The full serialised tool array for all 47 and all 7 tools.',
+     '<b>Real.</b> Counted per run.'],
+    ['Code snippets',
+     '<b>Real.</b> Extracted from the source with the same <code>ast</code> walk the live app uses.',
+     '<b>Real.</b> Extracted at request time, so they cannot drift.'],
+    ['JSON-RPC frames',
+     '<b>Real.</b> Recorded by a wire tap on a real stdio session.',
+     '<b>Real.</b> Recorded live.'],
+    ['Which tool the model picked',
+     '<b>Simulated.</b> Replayed from a captured run — with a genuine coin flip on exhibit 3 and a genuine miss rate on exhibit 7, because a fixed replay would teach the opposite of their point.',
+     '<b>Real.</b> The model decides, and it will surprise you.'],
+    ['Timing',
+     '<b>Simulated.</b> Delays stand in for round trips, so you can see that one side made five and the other made one.',
+     '<b>Real.</b> Whatever the network and the model take.'],
+    ['The database',
+     '<b>A snapshot.</b> Real rows from a real seed, but nothing here can be deleted.',
+     '<b>Live SQLite.</b> Exhibit 5 really does drop 26 rows, and every run reseeds.'],
+    ['Your own question',
+     '<b>Not available.</b> It needs a model, and faking it would be indistinguishable from an answer.',
+     '<b>Available</b>, with an API key.'],
+  ];
+  const tb = el('tbody');
+  rows.forEach(r => tb.append(el('tr', '', r.map((c, i) =>
+    `<td${i ? ' style="color:var(--muted)"' : ''}>${i ? c : `<b>${c}</b>`}</td>`).join(''))));
+  t.append(tb);
+  const c1 = el('div', 'card');
+  c1.append(el('h3', '', 'What is real, item by item'));
+  c1.append(t);
+  s.append(c1);
+
+  s.append(el('div', 'card', `
+    <h3>How the fixtures are built</h3>
+    <p>One script, <code>scripts/build_demo_data.py</code>, produces
+    <code>demo-site/demo-data.js</code>. It does four things, all of them against the real code:</p>
+    <pre class="code">1. runs every exhibit through the real harness, recording each event
+2. spawns each server over stdio and calls every tool the site can show,
+   recording the exact text and its token count
+3. fires each MCP primitive and records the JSON-RPC frames
+4. extracts every code snippet with the same ast walk the live app uses</pre>
+    <p style="margin-top:.9rem">So the static site cannot drift from the servers it teaches. Change
+    a tool, re-run the script, and the numbers on this page move with it. That is the same
+    discipline the live app uses for snippets — nothing is pasted, because anything pasted goes
+    stale silently.</p>
+    <p>The one thing deliberately not shipped whole is exhibit 2's 700,532-character trace. Its
+    lesson is that it fits nowhere; putting 700 KB in a teaching page to make that point would be a
+    poor joke. You get its head, its tail, and its honest measurements.</p>`));
+
+  s.append(el('div', 'card', `
+    <h3>Running the real thing</h3>
+    <pre class="code">git clone https://git.krishnarajthadesar.in/krishnaraj/why_mcp
+cd why_mcp
+uv sync
+cp .env.example .env          # add OPENAI_API_KEY -- optional
+uv run python -m app.main     # http://localhost:1184</pre>
+    <p style="margin-top:.9rem"><b>No key? It still runs.</b> Without <code>OPENAI_API_KEY</code>
+    every exhibit runs a scripted stand-in for the model: no network, deterministic, and the UI says
+    <code>scripted (offline)</code>. Use it for the walkthrough, then run live for the reveal — the
+    difference between those two is exactly exhibits 3 and 7.</p>
+    <p>Once it is running, switch this page to <b>Live mode</b> in the header and point it at
+    <code>http://localhost:1184</code>. Every panel here will drive that backend instead of the
+    fixtures.</p>`));
+
+  s.append(el('div', 'card', `
+    <h3>Use the servers from your own editor</h3>
+    <p>Both servers speak stdio, so they drop into any MCP client. The repo's <code>.mcp.json</code>
+    registers them for Claude Code:</p>
+    <pre class="code">uv run python -m server bad  --exhibit 1     # what the harness spawns
+uv run python -m server good --exhibit 6
+uv run python -m server good --exhibit 0     # the primitives tour</pre>
+    <p style="margin-top:.9rem">End a talk here: add <code>why-mcp-bad-e3</code> to your own editor
+    and ask it whether the cost-centre budget problem has happened before. Feeling a bad tool
+    description misfire in a tool <i>you</i> are holding is what makes the lesson stick.</p>`));
+
+  s.append(el('div', 'card', `
+    <h3>Suggested live flow, per exhibit</h3>
+    <p>1. Read the question out loud. Ask which server will cost more, and why.<br>
+       2. <b>Run both.</b> Watch the traces race — the bad side's round trips land one at a time
+       while the good side has already finished.<br>
+       3. Point at the highlighted metric (<code>◂ watch this</code>) and let the gap land.<br>
+       4. Open both source files from the panel headers (click the filename) and read the two design
+       choices side by side.<br>
+       5. Expand <b>view the wire</b> and show that this was real JSON-RPC over stdio.</p>
+    <p><b>Exhibit 5 goes last</b>, or reset after it. The row counter drops in real time, and what it
+    drops is payroll records. Then ask the room what the fix is; someone will say “a warning in the
+    description”, and the answer is no: a parser, a reversible alternative, and a confirmation
+    gate.</p>`));
+}
+
+/* =====================================================================
+   boot
+   ===================================================================== */
+
+(async function boot() {
+  if (!D) {
+    document.body.innerHTML = '<div class="wrap"><div class="banner err" style="margin-top:3rem">'
+      + '<span class="ico">✕</span><div><b>demo-data.js did not load.</b> Serve this folder over '
+      + 'HTTP rather than opening index.html from the filesystem: '
+      + '<code>python3 -m http.server 1185 --directory demo-site</code></div></div></div>';
+    return;
+  }
+  renderModeButtons();
+  if (MODE === 'live') await tryConnect(); else CFG = await api.config();
+  renderCfg(); renderBanner();
+  await rebuild();
+})();
+</script>
+</body>
+</html>

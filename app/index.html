@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Why MCP — Two Servers, One Question</title>
+<style>
+  :root {
+    --bg: #0e1116; --card: #151a23; --card2: #1c2330; --border: #2a3345;
+    --text: #e8edf6; --muted: #8b98af; --accent: #6478f0;
+    --ok: #34c98e; --danger: #ef5b6a; --warn: #dfa514;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 18px; }
+  body {
+    background: var(--bg);
+    background-image: radial-gradient(ellipse 70% 45% at 50% -10%, rgba(100,120,240,.14), transparent);
+    color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh; padding-bottom: 4rem;
+  }
+  .wrap { max-width: 1340px; margin: 0 auto; padding: 1.5rem; }
+
+  header { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; padding: 1.2rem 0 1.4rem; }
+  header .eyebrow { font-size: .72rem; letter-spacing: .18em; color: var(--accent); font-weight: 700; }
+  header h1 { font-size: 2.3rem; margin-top: .2rem;
+    background: linear-gradient(90deg, #8b9bf5, #4fd6bb);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header .sub { color: var(--muted); font-size: 1rem; margin-top: .3rem; }
+  header .spacer { flex: 1; }
+  .hbtn { font-size: .85rem; padding: .55rem 1rem; border-radius: 10px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--border); transition: .15s; }
+  .hbtn:hover { border-color: var(--accent); color: var(--text); }
+  .hbtn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .cfg { font-family: var(--mono); font-size: .72rem; color: var(--muted); text-align: right; line-height: 1.6; }
+  .cfg .nokey { color: var(--danger); }
+
+  nav { display: flex; gap: .3rem; border-bottom: 1px solid var(--border); margin-bottom: 1.4rem; flex-wrap: wrap; }
+  nav button { font-size: .95rem; padding: .75rem 1.05rem; cursor: pointer; background: none;
+    color: var(--muted); border: none; border-bottom: 3px solid transparent; margin-bottom: -1px; transition: .15s; }
+  nav button:hover { color: var(--text); }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  nav button .num { color: var(--accent); font-weight: 700; margin-right: .4rem; }
+  section.tab { display: none; animation: fadein .25s; }
+  section.tab.show { display: block; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.3rem 1.4rem; margin-bottom: 1.1rem; }
+  .card h3 { font-size: 1rem; margin-bottom: .6rem; }
+  .card p { color: var(--muted); line-height: 1.7; }
+  .card.accent { border-left: 3px solid var(--accent); }
+  .pitfall { color: var(--warn); font-size: .82rem; letter-spacing: .04em; text-transform: uppercase;
+    font-weight: 700; margin-bottom: .5rem; }
+  .question { font-size: 1.25rem; line-height: 1.55; font-weight: 500; }
+  .question::before { content: '“'; color: var(--accent); font-size: 1.6rem; }
+  .question::after { content: '”'; color: var(--accent); font-size: 1.6rem; }
+  .watch { color: var(--muted); font-size: .9rem; margin-top: .8rem; line-height: 1.65;
+    border-top: 1px solid var(--border); padding-top: .8rem; }
+  .watch b { color: var(--text); }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-bottom: 1.1rem; }
+  @media (max-width: 980px) { .split { grid-template-columns: 1fr; } }
+  .side { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .side.bad { border-top: 3px solid var(--danger); }
+  .side.good { border-top: 3px solid var(--ok); }
+  .side > .head { padding: .9rem 1.2rem; display: flex; align-items: center; gap: .6rem;
+    border-bottom: 1px solid var(--border); background: var(--card2); }
+  .side > .head .tag { font-size: .7rem; font-weight: 800; letter-spacing: .14em; padding: .2rem .55rem;
+    border-radius: 5px; }
+  .side.bad .tag { background: rgba(239,91,106,.16); color: var(--danger); }
+  .side.good .tag { background: rgba(52,201,142,.16); color: var(--ok); }
+  .side > .head .file { font-family: var(--mono); font-size: .72rem; color: var(--muted); margin-left: auto; }
+  .side > .head .file:hover { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .side .body { padding: 1.1rem 1.2rem; }
+  .choice { color: var(--muted); font-size: .92rem; line-height: 1.72; }
+
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin: 1rem 0 .4rem; }
+  .metric { background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+    padding: .7rem .55rem; text-align: center; }
+  .metric .v { font-family: var(--mono); font-size: 1.45rem; font-weight: 700; line-height: 1.1; }
+  .metric .k { font-size: .62rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-top: .3rem; }
+  .metric.focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(100,120,240,.25); }
+  .metric.focus .k::after { content: ' ◂ watch this'; color: var(--accent); letter-spacing: 0; }
+  .metric.hot .v { color: var(--danger); }
+  .metric.cool .v { color: var(--ok); }
+
+  .meter { height: 7px; background: var(--card2); border-radius: 99px; overflow: hidden; margin: .7rem 0 .3rem; }
+  .meter > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+  .meter.warn > i { background: var(--warn); }
+  .meter.over > i { background: var(--danger); }
+  .meter-lbl { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+
+  .verdict { margin-top: .9rem; padding: .7rem .9rem; border-radius: 9px; font-size: .88rem; line-height: 1.55;
+    border: 1px solid var(--border); }
+  .verdict.pass { border-color: rgba(52,201,142,.45); background: rgba(52,201,142,.08); color: var(--ok); }
+  .verdict.fail { border-color: rgba(239,91,106,.45); background: rgba(239,91,106,.08); color: var(--danger); }
+  .verdict.open { border-color: rgba(100,120,240,.45); background: rgba(100,120,240,.08); color: #9db4e8; }
+  .verdict b { display: block; font-size: .68rem; letter-spacing: .13em; text-transform: uppercase; margin-bottom: .25rem; }
+
+  .trace { margin-top: .9rem; font-family: var(--mono); font-size: .74rem; max-height: 340px; overflow-y: auto;
+    background: #0a0d12; border: 1px solid var(--border); border-radius: 9px; padding: .7rem .8rem; }
+  .trace:empty::after { content: 'not run yet'; color: var(--muted); font-style: italic; }
+  .trace .ln { padding: .18rem 0; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .trace .call { color: #9db4e8; }
+  .trace .res { color: var(--muted); }
+  .trace .res.big { color: var(--danger); font-weight: 700; }
+  .trace .ans { color: var(--text); border-left: 2px solid var(--ok); padding-left: .6rem; margin: .4rem 0; }
+  .trace .err { color: var(--danger); border-left: 2px solid var(--danger); padding-left: .6rem; margin: .4rem 0; }
+  .trace .tools { color: var(--warn); }
+
+  .runbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.1rem; }
+  .runbar button { font-size: .88rem; padding: .6rem 1.1rem; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: #fff; border: 1px solid transparent; font-weight: 600; transition: .15s; }
+  .runbar button.ghost { background: transparent; color: var(--muted); border-color: var(--border); font-weight: 500; }
+  .runbar button.ghost:hover { color: var(--text); border-color: var(--accent); }
+  .runbar button:disabled { opacity: .45; cursor: not-allowed; }
+  .runbar .note { color: var(--muted); font-size: .8rem; margin-left: auto; font-family: var(--mono); }
+
+  .dots { display: flex; gap: .28rem; flex-wrap: wrap; margin-top: .7rem; }
+  .dot { width: 15px; height: 15px; border-radius: 4px; background: var(--card2); border: 1px solid var(--border); }
+  .dot.pass { background: rgba(52,201,142,.75); border-color: transparent; }
+  .dot.fail { background: rgba(239,91,106,.75); border-color: transparent; }
+  .rate { font-family: var(--mono); font-size: 2.1rem; font-weight: 700; }
+
+  .dbpanel { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .dbcell { background: var(--card2); border: 1px solid var(--border); border-radius: 9px; padding: .55rem .85rem;
+    font-family: var(--mono); font-size: .82rem; }
+  .dbcell.lost { border-color: var(--danger); color: var(--danger); }
+  .dbcell b { color: var(--text); }
+  .dbcell.lost b { color: var(--danger); }
+  .dbtables { display: grid; gap: 1.1rem; }
+  .dbtable { overflow: hidden; }
+  .dbtable .dbhead { display: flex; align-items: baseline; gap: .7rem; margin-bottom: .8rem; }
+  .dbtable .dbhead h3 { margin: 0; font-family: var(--mono); color: var(--accent); }
+  .dbtable .dbhead span { color: var(--muted); font-size: .78rem; }
+  .dbscroll { overflow: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: 8px; }
+  table.dbpreview { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .76rem; }
+  table.dbpreview th, table.dbpreview td { text-align: left; padding: .55rem .65rem;
+    border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.dbpreview th { color: var(--muted); font-size: .65rem; text-transform: uppercase;
+    letter-spacing: .08em; white-space: nowrap;
+    position: sticky; top: 0; z-index: 1; background: var(--card2); }
+  table.dbpreview tbody tr:nth-child(even) td { background: rgba(255,255,255,.018); }
+  table.dbpreview tbody tr:hover td { background: rgba(100,120,240,.09); }
+  table.dbpreview td { font-family: var(--mono); max-width: 360px; white-space: pre-wrap;
+    overflow-wrap: anywhere; line-height: 1.45; }
+  table.dbpreview tr:last-child td { border-bottom: 0; }
+
+  .setgrid { display: grid; gap: 1.1rem; }
+  .setrow { display: grid; grid-template-columns: 15rem 1fr; gap: 1.2rem; align-items: start;
+    padding: 1.1rem 0; border-bottom: 1px solid var(--border); }
+  .setrow:last-child { border-bottom: 0; }
+  .setrow > .lbl h4 { font-size: .95rem; margin-bottom: .3rem; }
+  .setrow > .lbl p { color: var(--muted); font-size: .78rem; line-height: 1.6; }
+  .setrow .field { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .setrow input[type=text], .setrow input[type=number] {
+    background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: .55rem .7rem; font-family: var(--mono); font-size: .85rem; }
+  .setrow input[type=text] { min-width: 15rem; }
+  .setrow input[type=number] { width: 9rem; }
+  .chipset { display: flex; gap: .35rem; flex-wrap: wrap; }
+  .chip { font-size: .74rem; padding: .3rem .6rem; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    font-family: var(--mono); transition: .15s; }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .chip.on { background: rgba(100,120,240,.18); color: var(--text); border-color: var(--accent); }
+  .setnote { color: var(--muted); font-size: .74rem; margin-top: .45rem; line-height: 1.6; }
+  .setbar { display: flex; gap: .6rem; align-items: center; margin-top: 1.2rem; flex-wrap: wrap; }
+  .setbar button { font-size: .88rem; padding: .6rem 1.1rem; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+  .setbar button.ghost { background: transparent; color: var(--muted); border-color: var(--border);
+    font-weight: 500; }
+  .setbar button.ghost:hover { color: var(--text); border-color: var(--accent); }
+  .setbar button:disabled { opacity: .45; cursor: not-allowed; }
+  .setmsg { font-size: .8rem; font-family: var(--mono); margin-left: auto; }
+  .setmsg.ok { color: var(--ok); }
+  .setmsg.err { color: var(--danger); }
+  .movetable { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: .7rem; }
+  .movetable th, .movetable td { text-align: left; padding: .5rem .6rem;
+    border-bottom: 1px solid var(--border); vertical-align: top; }
+  .movetable th { color: var(--muted); font-size: .68rem; text-transform: uppercase;
+    letter-spacing: .08em; }
+  .movetable td.yes { color: var(--warn); }
+  .movetable td.no { color: var(--ok); }
+
+  details.src { margin-top: .9rem; }
+  details.src > summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+  details.src > summary:hover { color: var(--accent); }
+  pre.code { margin-top: .6rem; background: #0a0d12; border: 1px solid var(--border); border-radius: 9px;
+    padding: .8rem .9rem; font-family: var(--mono); font-size: .7rem; line-height: 1.6;
+    max-height: 460px; overflow: auto; color: #b9c6e0; white-space: pre; }
+
+  .wire { font-family: var(--mono); font-size: .72rem; max-height: 420px; overflow: auto;
+    background: #0a0d12; border: 1px solid var(--border); border-radius: 9px; padding: .7rem .8rem; }
+  .wire .f { padding: .22rem 0; display: flex; gap: .6rem; align-items: baseline; }
+  .wire .f .d { flex: 0 0 auto; font-size: .62rem; letter-spacing: .06em; padding: .05rem .35rem; border-radius: 4px; }
+  .wire .f .d.out { background: rgba(100,120,240,.18); color: #9db4e8; }
+  .wire .f .d.in  { background: rgba(52,201,142,.15); color: var(--ok); }
+  .wire .f .m { color: var(--text); }
+  .wire .f .b { color: var(--muted); word-break: break-all; }
+
+  /* ---------- lesson ---------- */
+  .lesson { border-left: 3px solid var(--warn); }
+  .lesson > h2 {
+    font-size: 1.35rem; line-height: 1.4; margin-bottom: 1.1rem; font-weight: 650;
+    background: linear-gradient(90deg, #e8edf6, #dfa514);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lblock { margin-bottom: 1.15rem; }
+  .lblock > h4 {
+    font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 800; margin-bottom: .4rem;
+  }
+  .lblock > p { color: #c3cee2; line-height: 1.78; font-size: .95rem; }
+  .lblock.cost > h4 { color: var(--danger); }
+  .rulebox {
+    margin: 1.4rem 0 .4rem; padding: 1rem 1.2rem; border-radius: 11px;
+    border: 1px solid rgba(223,165,20,.4); background: rgba(223,165,20,.07);
+  }
+  .rulebox > h4 {
+    font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--warn); font-weight: 800; margin-bottom: .35rem;
+  }
+  .rulebox > p { color: #f0e2be; line-height: 1.7; font-size: 1rem; font-weight: 500; }
+
+  .snip { margin: 1.1rem 0; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+  .snip > .shead {
+    padding: .65rem .95rem; background: var(--card2); display: flex; gap: .7rem;
+    align-items: baseline; flex-wrap: wrap; border-bottom: 1px solid var(--border);
+  }
+  .snip > .shead .slabel { font-weight: 600; font-size: .92rem; }
+  .snip > .shead .sref {
+    margin-left: auto; font-family: var(--mono); font-size: .7rem; color: var(--muted);
+    cursor: pointer; text-decoration: underline dotted;
+  }
+  .snip > .shead .sref:hover { color: var(--accent); }
+  .snip > .snote { padding: .7rem .95rem 0; color: var(--muted); font-size: .87rem; line-height: 1.7; }
+  .snip pre {
+    margin: .7rem 0 0; padding: .85rem .95rem; background: #0a0d12;
+    max-height: 430px; overflow: auto;
+    font-family: var(--mono); font-size: .73rem; line-height: 1.62; color: #b9c6e0; white-space: pre;
+  }
+  .snip pre .gut { color: #46536b; user-select: none; }
+
+  .demo { margin: 1.1rem 0; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+  .demo.bad { border-left: 3px solid var(--danger); }
+  .demo.good { border-left: 3px solid var(--ok); }
+  .demo > .dhead { padding: .65rem .95rem; background: var(--card2); display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  .demo > .dhead .dlabel { font-weight: 600; font-size: .92rem; }
+  .demo > .dhead .dcall { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+  .demo > .dhead button {
+    margin-left: auto; font-size: .76rem; padding: .32rem .8rem; border-radius: 7px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+  }
+  .demo > .dhead button:hover { border-color: var(--accent); color: var(--text); }
+  .demo > .dhead .dcost { font-family: var(--mono); font-size: .7rem; color: var(--warn); }
+  .demo > .dnote { padding: .7rem .95rem; color: var(--muted); font-size: .87rem; line-height: 1.7; border-top: 1px solid var(--border); }
+  .demo pre {
+    margin: 0; padding: .85rem .95rem; background: #0a0d12; max-height: 330px; overflow: auto;
+    font-family: var(--mono); font-size: .72rem; line-height: 1.6; color: #b9c6e0;
+    white-space: pre-wrap; word-break: break-word; border-top: 1px solid var(--border);
+  }
+  .fileref { color: #9db4e8; cursor: pointer; font-family: var(--mono); font-size: .93em;
+    text-decoration: underline dotted; }
+  .fileref:hover { color: var(--accent); }
+  .readmore { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--border);
+    color: var(--muted); font-size: .87rem; }
+
+  /* ---------- primer ---------- */
+  .primer > h3 { font-size: 1.15rem; margin-bottom: 1rem; }
+  .pblock { margin-bottom: 1.25rem; padding-left: 1rem; border-left: 2px solid var(--border); }
+  .pblock > h4 { font-size: .96rem; margin-bottom: .4rem; color: var(--text); }
+  .pblock > p { color: #c3cee2; line-height: 1.8; font-size: .93rem; }
+  .pblock:hover { border-left-color: var(--accent); }
+
+  .askrow { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+  .askrow input {
+    flex: 1 1 380px; font-size: 1rem; padding: .7rem .9rem; border-radius: 10px;
+    background: #0a0d12; color: var(--text); border: 1px solid var(--border);
+  }
+  .askrow input:focus { outline: none; border-color: var(--accent); }
+  .askrow select {
+    font-size: .88rem; padding: .7rem .8rem; border-radius: 10px;
+    background: var(--card2); color: var(--text); border: 1px solid var(--border);
+  }
+  .askrow button {
+    font-size: .9rem; padding: .7rem 1.3rem; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: #fff; border: 1px solid transparent; font-weight: 600;
+  }
+  .askrow button:disabled { opacity: .45; cursor: not-allowed; }
+  .chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .85rem; }
+  .chip {
+    font-size: .78rem; padding: .35rem .8rem; border-radius: 999px; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--border); transition: .15s;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+
+  table.ov { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  table.ov th, table.ov td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.ov th { color: var(--muted); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
+  table.ov td.n { font-family: var(--mono); color: var(--accent); font-weight: 700; }
+  table.ov tr:hover td { background: rgba(100,120,240,.05); cursor: pointer; }
+  .prims { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .8rem; margin-bottom: 1.1rem; }
+  .prim { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
+  .prim h4 { font-size: .82rem; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: .4rem; }
+  .prim p { font-size: .82rem; color: var(--muted); line-height: 1.6; margin-bottom: .8rem; }
+  .prim button { width: 100%; font-size: .82rem; padding: .5rem; border-radius: 8px; cursor: pointer;
+    background: transparent; color: var(--text); border: 1px solid var(--border); transition: .15s; }
+  .prim button:hover { border-color: var(--accent); }
+  pre.out { background: #0a0d12; border: 1px solid var(--border); border-radius: 9px; padding: .8rem .9rem;
+    font-family: var(--mono); font-size: .72rem; line-height: 1.6; max-height: 340px; overflow: auto;
+    color: #b9c6e0; white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">WHY MCP</div>
+      <h1>Two Servers, One Question</h1>
+      <div class="sub">The same data, the same model, the same question — asked of a badly designed MCP server and a well designed one.</div>
+    </div>
+    <div class="spacer"></div>
+    <div>
+      <div class="cfg" id="cfg">…</div>
+      <div style="margin-top:.5rem;display:flex;gap:.4rem;justify-content:flex-end">
+        <button class="hbtn danger" id="resetBtn">Reset demo data</button>
+      </div>
+    </div>
+  </header>
+
+  <nav id="nav"></nav>
+  <section class="tab show" id="tab-ov"></section>
+  <div id="tabs"></div>
+  <section class="tab" id="tab-play"></section>
+  <section class="tab" id="tab-db"></section>
+  <section class="tab" id="tab-prim"></section>
+  <section class="tab" id="tab-set"></section>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+// Lesson prose is authored in harness/lessons.py with two conventions:
+//   `backticks`  -> inline code
+//   [[a/path.py]] -> a link that opens that file's source inline
+// Everything else in that text is trusted HTML (it is our own content, not user
+// input), which is what lets the prose use <b> and <i> for emphasis.
+function rich(text) {
+  return String(text ?? '')
+    .replace(/\[\[([^\]]+)\]\]/g, (_m, p) => `<span class="fileref" data-openfile="${p}">${p}</span>`)
+    .replace(/`([^`]+)`/g, (_m, c) => `<code>${esc(c)}</code>`);
+}
+
+// One delegated handler for every file reference on the page.
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-openfile]');
+  if (t) openFile(t.dataset.openfile, t);
+});
+const num = n => (n ?? 0).toLocaleString();
+
+let EXHIBITS = [], CFG = {}, PLAY = {}, LESSONS = {}, PRIMER = {}, PRIMS_DOC = {}, BUSY = false;
+const STATE = {};   // STATE[`${id}:${variant}`] = { runs: [...], live: {...} }
+
+/* ---------------------------------------------------------------- boot */
+async function boot() {
+  CFG = await (await fetch('/api/config')).json();
+  EXHIBITS = await (await fetch('/api/exhibits')).json();
+  renderCfg();
+  PLAY = await (await fetch('/api/playground')).json();
+  const lj = await (await fetch('/api/lessons')).json();
+  LESSONS = lj.lessons; PRIMER = lj.primer; PRIMS_DOC = lj.primitives;
+  buildNav(); buildOverview(); buildExhibits(); buildPlayground(); buildDatabase(); buildPrimitives(); buildSettings(); refreshDb();
+}
+
+function buildNav() {
+  const nav = $('#nav');
+  nav.append(mkTab('Overview', 'tab-ov'));
+  EXHIBITS.forEach(ex => nav.append(mkTab(`<span class="num">${ex.id}</span>${esc(ex.title)}`, `tab-${ex.id}`)));
+  nav.append(mkTab('Your question', 'tab-play'));
+  nav.append(mkTab('Database', 'tab-db'));
+  nav.append(mkTab('Primitives', 'tab-prim'));
+  nav.append(mkTab('Settings', 'tab-set'));
+  nav.firstChild.classList.add('active');
+}
+function mkTab(label, target) {
+  const b = el('button', '', label);
+  b.onclick = () => {
+    [...$('#nav').children].forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    document.querySelectorAll('section.tab').forEach(s => s.classList.remove('show'));
+    $('#' + target).classList.add('show');
+    // Each tab that shows the row counter has its own panel, and renderDb only
+    // fills the visible one -- so a tab switch has to re-render or the counter
+    // sits blank until something runs.
+    refreshDb();
+    if (target === 'tab-db') loadDatabase();
+  };
+  return b;
+}
+
+function buildOverview() {
+  const s = $('#tab-ov');
+  const pr = el('div', 'card accent primer', `<h3>${esc(PRIMER.title)}</h3>`);
+  PRIMER.blocks.forEach(b => pr.append(el('div', 'pblock', `<h4>${esc(b.h)}</h4><p>${rich(b.p)}</p>`)));
+  s.append(pr);
+  s.append(el('div', 'card accent', `
+    <h3>How to read this</h3>
+    <p>Every exhibit ships the same pitfall twice: once the way it is usually built
+    (<b style="color:var(--danger)">bad</b>) and once the way it should be built
+    (<b style="color:var(--ok)">good</b>). Both servers read one identical seeded database and are
+    spawned as real MCP subprocesses over stdio — the same transport your editor uses. The only
+    variable is tool design.</p>
+    <p style="margin-top:.7rem">Prompt and completion tokens come from OpenAI's own <code>usage</code>
+    field. Tool-schema tokens are counted locally with tiktoken, because no API reports how much of
+    your prompt was tool definitions — that number is exhibit 6's whole argument.</p>`));
+  const t = el('table', 'ov');
+  t.innerHTML = '<thead><tr><th>#</th><th>Exhibit</th><th>The pitfall</th><th>The question asked</th></tr></thead>';
+  const tb = el('tbody');
+  EXHIBITS.forEach(ex => {
+    const tr = el('tr', '', `<td class="n">${ex.id}</td><td><b>${esc(ex.title)}</b></td>
+      <td style="color:var(--muted)">${esc(ex.pitfall)}</td>
+      <td style="color:var(--muted)">${esc(ex.question)}</td>`);
+    tr.onclick = () => [...$('#nav').children][ex.id].click();
+    tb.append(tr);
+  });
+  t.append(tb);
+  const wrapCard = el('div', 'card');
+  wrapCard.append(t);
+  s.append(wrapCard);
+}
+
+/* ------------------------------------------------------- exhibit tabs */
+function buildExhibits() {
+  const host = $('#tabs');
+  EXHIBITS.forEach(ex => {
+    const s = el('section', 'tab'); s.id = `tab-${ex.id}`;
+    s.append(el('div', 'card', `
+      <div class="pitfall">Exhibit ${ex.id} — ${esc(ex.pitfall)}</div>
+      <div class="question">${esc(ex.question)}</div>
+      <div class="watch"><b>What to watch:</b> ${esc(ex.watch)}</div>`));
+
+    const bar = el('div', 'runbar');
+    const sides = ex.paired ? ['bad', 'good'] : ['bad'];
+    const n = ex.default_runs;
+    sides.forEach(v => {
+      const b = el('button', v === 'good' ? '' : 'ghost',
+        `Run ${v}${n > 1 ? ` ×${n}` : ''}`);
+      b.onclick = () => runSide(ex, v, n);
+      b.dataset.run = '1';
+      bar.append(b);
+    });
+    if (ex.paired) {
+      const both = el('button', '', `Run both${n > 1 ? ` ×${n}` : ''}`);
+      both.onclick = async () => { await runSide(ex, 'bad', n); await runSide(ex, 'good', n); };
+      both.dataset.run = '1';
+      bar.append(both);
+    }
+    const note = el('div', 'note', ex.mutates_db ? 'this exhibit can delete data — reseeded before every run' : '');
+    bar.append(note);
+    s.append(bar);
+
+    if (ex.mutates_db) {
+      const db = el('div', 'card');
+      db.innerHTML = '<h3>Database state</h3><div class="dbpanel" id="db-panel"></div>';
+      s.append(db);
+    }
+
+    const split = el('div', 'split');
+    sides.forEach(v => split.append(buildSide(ex, v)));
+    s.append(split);
+    s.append(buildLesson(ex));
+    host.append(s);
+  });
+}
+
+function buildSide(ex, v) {
+  const side = el('div', `side ${v}`);
+  const label = ex.paired ? v.toUpperCase() : 'THE ONLY SERVER';
+  side.innerHTML = `
+    <div class="head">
+      <span class="tag">${label}</span>
+      <span style="font-size:.86rem;color:var(--muted)">${v === 'bad' ? 'the usual way' : 'the designed way'}</span>
+      <span class="file" data-file="${v === 'bad' ? ex.bad_file : ex.good_file}">${esc(v === 'bad' ? ex.bad_file : ex.good_file)}</span>
+    </div>
+    <div class="body">
+      <div class="choice">${esc(v === 'bad' ? ex.bad_choice : ex.good_choice)}</div>
+      <div class="metrics">
+        <div class="metric${ex.focus === 'calls' ? ' focus' : ''}"><div class="v" data-m="calls">–</div><div class="k">tool calls</div></div>
+        <div class="metric${ex.focus === 'schema' ? ' focus' : ''}"><div class="v" data-m="schema">–</div><div class="k">schema tokens</div></div>
+        <div class="metric${ex.focus === 'results' ? ' focus' : ''}"><div class="v" data-m="results">–</div><div class="k">result tokens</div></div>
+        <div class="metric"><div class="v" data-m="total">–</div><div class="k">billed tokens</div></div>
+      </div>
+      <div class="meter"><i></i></div>
+      <div class="meter-lbl">context budget</div>
+      <div class="ratebox" style="display:none;margin-top:.9rem">
+        <div class="rate">–</div><div class="dots"></div>
+      </div>
+      <div class="verdict" style="display:none"></div>
+      <div class="trace"></div>
+      <details class="src"><summary>view the wire (JSON-RPC frames)</summary><div class="wire"></div></details>
+    </div>`;
+  side.querySelector('.file').dataset.openfile = v === 'bad' ? ex.bad_file : ex.good_file;
+  STATE[`${ex.key ?? ex.id}:${v}`] = { side, runs: [] };
+  return side;
+}
+
+// Every file reference on the page -- panel headers, inline [[refs]], snippet
+// headers, read-more links -- opens the source right below where you clicked,
+// so you never lose your place in the lesson.
+async function openFile(path, near) {
+  const host = near.closest('.card, .side .body, .snip') || near.parentElement;
+  const existing = host.querySelector(`details.code-src[data-path="${path}"]`);
+  if (existing) { existing.open = !existing.open; existing.scrollIntoView({ block: 'nearest' }); return; }
+  const d = el('details', 'src code-src');
+  d.dataset.path = path;
+  d.open = true;
+  d.innerHTML = `<summary>${esc(path)}</summary><pre class="code">loading…</pre>`;
+  host.append(d);
+  const r = await (await fetch('/api/source?path=' + encodeURIComponent(path))).json();
+  d.querySelector('pre').textContent = r.detail ? 'could not load: ' + r.detail : r.code;
+  d.scrollIntoView({ block: 'nearest' });
+}
+
+/* -------------------------------------------------------------- lesson */
+function buildLesson(ex) {
+  const L = LESSONS[String(ex.id)];
+  const card = el('div', 'card lesson');
+  if (!L) return card;
+  card.append(el('h2', '', esc(L.headline)));
+  card.append(el('div', 'lblock', `<h4>What is actually happening</h4><p>${rich(L.what_happens)}</p>`));
+  card.append(el('div', 'lblock', `<h4>Why anyone builds it this way</h4><p>${rich(L.why_tempting)}</p>`));
+  card.append(el('div', 'lblock cost', `<h4>What it costs</h4><p>${rich(L.what_it_costs)}</p>`));
+
+  L.snippets.forEach(sn => card.append(buildSnippet(sn)));
+  L.demos.forEach(d => card.append(buildDemo(d)));
+
+  card.append(el('div', 'rulebox', `<h4>The rule</h4><p>${rich(L.rule)}</p>`));
+  if (L.read_more.length) {
+    card.append(el('div', 'readmore', 'Read the whole thing: ' + L.read_more
+      .map(r => `<span class="fileref" data-openfile="${r.path}">${esc(r.label)}</span>`)
+      .join(' · ')));
+  }
+  return card;
+}
+
+function buildSnippet(sn) {
+  const box = el('div', 'snip');
+  box.innerHTML = `
+    <div class="shead">
+      <span class="slabel">${esc(sn.label)}</span>
+      <span class="sref" data-openfile="${sn.path}">${esc(sn.path)}</span>
+    </div>
+    ${sn.note ? `<div class="snote">${rich(sn.note)}</div>` : ''}
+    <pre>loading…</pre>`;
+  // Snippets are extracted from the real files by the server, so they cannot
+  // drift out of sync with the code the lesson is describing.
+  fetch(`/api/snippet?path=${encodeURIComponent(sn.path)}&symbol=${encodeURIComponent(sn.symbol)}`)
+    .then(r => r.json())
+    .then(j => {
+      const pre = box.querySelector('pre');
+      if (j.detail) { pre.textContent = 'could not load: ' + j.detail; return; }
+      const w = String(j.end_line).length;
+      pre.innerHTML = j.code.split('\n')
+        .map((ln, i) => `<span class="gut">${String(j.start_line + i).padStart(w)}</span>  ${esc(ln)}`)
+        .join('\n');
+      box.querySelector('.sref').textContent = `${j.path}:${j.start_line}`;
+    })
+    .catch(e => { box.querySelector('pre').textContent = String(e); });
+  return box;
+}
+
+function buildDemo(d) {
+  const box = el('div', `demo ${d.variant}`);
+  const call = `${d.tool}(${Object.entries(d.args).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ')})`;
+  box.innerHTML = `
+    <div class="dhead">
+      <span class="dlabel">${esc(d.label)}</span>
+      <span class="dcall">${esc(d.variant)} server · ${esc(call)}</span>
+      <span class="dcost"></span>
+      <button>Call it</button>
+    </div>
+    ${d.note ? `<div class="dnote">${rich(d.note)}</div>` : ''}`;
+  const btn = box.querySelector('button');
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = '…';
+    const q = new URLSearchParams({ exhibit: d.exhibit, variant: d.variant, tool: d.tool,
+                                    args: JSON.stringify(d.args) });
+    try {
+      const j = await (await fetch('/api/demo?' + q)).json();
+      let pre = box.querySelector('pre');
+      if (!pre) { pre = el('pre'); box.append(pre); }
+      pre.textContent = j.detail ? 'error: ' + j.detail : j.text;
+      box.querySelector('.dcost').textContent = j.detail ? ''
+        : `${num(j.tokens)} tokens · ${num(j.chars)} chars`;
+    } finally { btn.disabled = false; btn.textContent = 'Call it again'; }
+  };
+  return box;
+}
+
+/* ------------------------------------------------------------- running */
+function setBusy(b) {
+  BUSY = b;
+  document.querySelectorAll('[data-run]').forEach(x => { x.disabled = b; });
+}
+
+async function runSide(ex, variant, runs, question) {
+  if (BUSY) return;
+  setBusy(true);
+  const st = STATE[`${ex.key ?? ex.id}:${variant}`];
+  st.runs = [];
+  const trace = st.side.querySelector('.trace');
+  trace.innerHTML = '';
+  st.side.querySelector('.wire').innerHTML = '';
+  st.side.querySelector('.verdict').style.display = 'none';
+  st.side.querySelector('.ratebox').style.display = runs > 1 ? 'block' : 'none';
+  st.side.querySelector('.dots').innerHTML = '';
+  try {
+    for (let i = 0; i < runs; i++) {
+      if (runs > 1) addLine(trace, 'tools', `── run ${i + 1} of ${runs} ──`);
+      await streamOne(ex, variant, i, st, question);
+    }
+  } finally { setBusy(false); refreshDb(); }
+}
+
+function addLine(trace, cls, html) {
+  trace.append(el('div', `ln ${cls}`, html));
+  trace.scrollTop = trace.scrollHeight;
+}
+
+function streamOne(ex, variant, runIndex, st, question) {
+  return new Promise(resolve => {
+    const trace = st.side.querySelector('.trace');
+    const url = `/api/run?exhibit=${ex.id}&variant=${variant}&run_index=${runIndex}`
+      + (question ? `&question=${encodeURIComponent(question)}` : '');
+    const es = new EventSource(url);
+    const cur = { metrics: null, grade: null, before: null, after: null };
+    es.onmessage = m => {
+      const e = JSON.parse(m.data);
+      switch (e.type) {
+        case 'start':
+          if (e.offline) addLine(trace, 'err',
+            'OFFLINE — scripted stand-in for the model, not a real run. '
+            + 'Deterministic by design: exhibits 3 and 7 only vary live.');
+          if (ex.questions && ex.questions.length > 1) addLine(trace, 'tools', `Q: ${esc(e.question)}`);
+          break;
+        case 'db':
+          cur[e.when] = e.counts;
+          if (e.when === 'before') renderDb(e.counts, null);
+          else renderDb(cur.before, e.counts);
+          break;
+        case 'tools':
+          addLine(trace, 'tools', `${e.count} tool(s) offered · ${num(e.schema_tokens)} schema tokens`);
+          setMetric(st.side, 'schema', e.schema_tokens);
+          break;
+        case 'tool_call':
+          addLine(trace, 'call', `→ ${esc(e.name)}(${esc(JSON.stringify(e.args).slice(1, -1))})`);
+          break;
+        case 'tool_result': {
+          const big = e.tokens > CFG.context_budget / 3;
+          addLine(trace, 'res' + (big ? ' big' : ''),
+            `← ${num(e.tokens)} tokens / ${num(e.chars)} chars${e.is_error ? '  [tool error]' : ''}`);
+          break;
+        }
+        case 'assistant': addLine(trace, 'ans', esc(e.text)); break;
+        case 'error': addLine(trace, 'err', `✕ ${esc(e.message)}`); break;
+        case 'metrics':
+          cur.metrics = e;
+          setMetric(st.side, 'calls', e.tool_calls);
+          setMetric(st.side, 'results', e.tool_result_tokens);
+          setMetric(st.side, 'total', e.total_tokens);
+          setMeter(st.side, e.schema_tokens + e.tool_result_tokens);
+          break;
+        case 'grade': cur.grade = e; break;
+        case 'wire': renderWire(st.side, e.frames); break;
+        case 'done': es.close(); st.runs.push(cur); renderVerdict(st, ex); compareSides(ex); resolve(); break;
+      }
+    };
+    es.onerror = () => { es.close(); resolve(); };
+  });
+}
+
+function setMetric(side, key, val) {
+  const n = side.querySelector(`[data-m="${key}"]`);
+  n.textContent = num(val);
+  n.dataset.raw = val;
+}
+
+function setMeter(side, used) {
+  const m = side.querySelector('.meter'), i = m.querySelector('i');
+  const pct = Math.min(100, (used / CFG.context_budget) * 100);
+  i.style.width = pct + '%';
+  m.classList.toggle('warn', pct > 60 && pct < 100);
+  m.classList.toggle('over', pct >= 100);
+  side.querySelector('.meter-lbl').textContent =
+    `${num(used)} / ${num(CFG.context_budget)} context budget${pct >= 100 ? '  \u2014 OVERFLOW' : ''}`;
+}
+
+// A scoreboard compares -- but only where the comparison is honest.
+//
+// Each exhibit declares the ONE metric it is about (`focus`), and that one is
+// always coloured. The rest are coloured only when BOTH runs reached an answer,
+// because a run that aborted on an oversized tool result gets billed less than
+// one that finished -- colouring that green would teach the opposite lesson.
+function compareSides(ex) {
+  if (!ex.paired) return;
+  const k = ex.key ?? ex.id;
+  const A = STATE[`${k}:bad`], B = STATE[`${k}:good`];
+  const bothFinished = [A, B].every(st => {
+    const last = st.runs[st.runs.length - 1];
+    return last && last.metrics && !st.side.querySelector('.trace .err');
+  });
+  ['calls', 'schema', 'results', 'total'].forEach(key => {
+    const na = A.side.querySelector(`[data-m="${key}"]`);
+    const nb = B.side.querySelector(`[data-m="${key}"]`);
+    [na, nb].forEach(x => x.parentElement.classList.remove('hot', 'cool'));
+    if (key !== ex.focus && !bothFinished) return;
+    const va = Number(na.dataset.raw ?? NaN), vb = Number(nb.dataset.raw ?? NaN);
+    if (!Number.isFinite(va) || !Number.isFinite(vb) || va === vb) return;
+    (va > vb ? na : nb).parentElement.classList.add('hot');
+    (va > vb ? nb : na).parentElement.classList.add('cool');
+  });
+}
+
+function renderVerdict(st, ex) {
+  const passes = st.runs.filter(r => r.grade && r.grade.ok === true).length;
+  const total = st.runs.length;
+  const box = st.side.querySelector('.verdict');
+  const last = st.runs[st.runs.length - 1];
+  box.style.display = 'block';
+  const g = last.grade;
+  const undecided = g && g.ok === null;
+  box.className = 'verdict ' + (undecided ? 'open' : g && g.ok ? 'pass' : 'fail');
+  const label = undecided ? 'you judge' : g && g.ok ? 'correct' : 'wrong';
+  box.innerHTML = `<b>${label}</b>${esc(g ? g.note : '—')}`;
+  if (total > 1) {
+    const rb = st.side.querySelector('.ratebox');
+    rb.style.display = 'block';
+    const rate = rb.querySelector('.rate');
+    rate.textContent = `${passes}/${total}`;
+    rate.style.color = passes === total ? 'var(--ok)' : passes === 0 ? 'var(--danger)' : 'var(--warn)';
+    rb.querySelector('.dots').innerHTML = st.runs
+      .map(r => `<span class="dot ${r.grade && r.grade.ok ? 'pass' : 'fail'}"></span>`).join('');
+    // averages read better than "whatever the last run happened to cost"
+    const avg = k => Math.round(st.runs.reduce((a, r) => a + (r.metrics ? r.metrics[k] : 0), 0) / total);
+    setMetric(st.side, 'calls', avg('tool_calls'));
+    setMetric(st.side, 'results', avg('tool_result_tokens'));
+    setMetric(st.side, 'total', avg('total_tokens'));
+  }
+}
+
+function renderWire(side, frames) {
+  const w = side.querySelector('.wire');
+  w.innerHTML = frames.map(f => {
+    const out = f.dir === 'client->server';
+    const body = esc(JSON.stringify(f.body || {}).slice(0, 220));
+    return `<div class="f"><span class="d ${out ? 'out' : 'in'}">${out ? 'C→S' : 'S→C'}</span>
+      <span class="m">${esc(f.method || '')}</span><span class="b">${body}</span></div>`;
+  }).join('');
+}
+
+/* --------------------------------------------------------- db + reset */
+async function refreshDb() {
+  const r = await (await fetch('/api/db')).json();
+  const panel = document.querySelector('section.tab.show #db-panel-play') || $('#db-panel');
+  if (!panel?.dataset.dirty) renderDb(r.counts, null);
+}
+function renderDb(before, after) {
+  const p = document.querySelector('section.tab.show #db-panel-play') || $('#db-panel');
+  if (!p || !before) return;
+  p.dataset.dirty = after ? '1' : '';
+  p.innerHTML = Object.entries(before).map(([k, v]) => {
+    const now = after ? after[k] : v;
+    const lost = v - now;
+    return `<div class="dbcell ${lost > 0 ? 'lost' : ''}">${k} <b>${num(now)}</b>${lost > 0 ? ` (−${num(lost)})` : ''}</div>`;
+  }).join('');
+}
+
+/* ------------------------------------------------------ database rows */
+function buildDatabase() {
+  const s = $('#tab-db');
+  s.append(el('div', 'card accent', `
+    <h3>Current seeded data</h3>
+    <p><b>Every row in every table</b>, newest paychecks first. This is the shared HR database
+    both MCP servers query, so use it to frame questions and check their answers.</p>
+    <p style="margin-top:.6rem">Each table scrolls in its own pane, with the header pinned.
+    Long text is truncated per cell with a trailing <code>…</code> — one paycheck
+    <code>trace</code> is 700,532 characters, which is exhibit 2's entire point.</p>`));
+  s.append(el('div', 'dbtables', '<div class="card"><p>Open this tab to load the database.</p></div>'));
+}
+
+async function loadDatabase() {
+  const host = $('#tab-db .dbtables');
+  host.innerHTML = '<div class="card"><p>Loading database…</p></div>';
+  try {
+    const r = await fetch('/api/db/preview');
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+    host.innerHTML = j.tables.map(t => `
+      <div class="card dbtable">
+        <div class="dbhead"><h3>${esc(t.name)}</h3><span>${t.rows.length === t.total
+          ? `all ${num(t.total)} rows` : `showing ${num(t.rows.length)} of ${num(t.total)} rows`}</span></div>
+        <div class="dbscroll"><table class="dbpreview">
+          <thead><tr>${t.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+          <tbody>${t.rows.map(row => `<tr>${row.map(v => `<td>${esc(v == null ? 'NULL' : String(v))}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></div>
+      </div>`).join('');
+  } catch (e) {
+    host.innerHTML = `<div class="card"><p>Could not load database: ${esc(String(e))}</p></div>`;
+  }
+}
+$('#resetBtn').onclick = async () => {
+  await fetch('/api/reset', { method: 'POST' });
+  document.querySelectorAll('#db-panel, #db-panel-play').forEach(p => { p.dataset.dirty = ''; });
+  refreshDb();
+  if ($('#tab-db').classList.contains('show')) loadDatabase();
+};
+
+/* -------------------------------------------------------- playground */
+// The rest of the demo asks fixed questions with mechanical graders. Here a
+// person types their own, which means there can be no grader -- and that is
+// the point: the audience discovers for themselves that `search` vs `find` is
+// a coin flip, or that "tidy up the failing payroll" deletes payroll records.
+const PLAY_EX = { key: 'play', id: 3, paired: true, focus: '', questions: [], mutates_db: true,
+                  bad_file: '', good_file: '', bad_choice: '', good_choice: '' };
+
+function buildPlayground() {
+  const s = $('#tab-play');
+  s.append(el('div', 'card accent', `
+    <h3>Ask your own question</h3>
+    <p>Every other tab asks a question I chose, graded by a substring match. Type
+    your own and there is nothing to match against — so there is no grader here.
+    You judge. That is the honest version: a real MCP server gets questions its
+    author never imagined, and the only way to know how it behaves is to ask.</p>
+    <p style="margin-top:.7rem">Pick which <b>pair of servers</b> to point the question at —
+    each pair exposes a different tool surface, so the same question behaves
+    completely differently depending on which one you choose.</p>`));
+
+  const ctl = el('div', 'card');
+  ctl.innerHTML = `
+    <div class="askrow">
+      <input id="askQ" type="text" maxlength="${PLAY.max_question}"
+             placeholder="e.g. whose payroll can we safely put on hold this cycle?">
+      <select id="askPair">
+        ${PLAY.pairs.map(p => `<option value="${p.id}">${p.id}. ${esc(p.title)}</option>`).join('')}
+      </select>
+      <button id="askRun">Run both</button>
+    </div>
+    <div class="chips" id="askChips"></div>
+    <div class="watch" id="askWhy"></div>`;
+  s.append(ctl);
+
+  const db = el('div', 'card');
+  db.innerHTML = '<h3>Database state</h3><div class="dbpanel" id="db-panel-play"></div>';
+  s.append(db);
+
+  const split = el('div', 'split');
+  ['bad', 'good'].forEach(v => split.append(buildSide(PLAY_EX, v)));
+  s.append(split);
+
+  PLAY.presets.forEach(pre => {
+    const c = el('button', 'chip', `${esc(pre.q)}`);
+    c.title = `pair ${pre.pair} — ${pre.why}`;
+    c.onclick = () => { $('#askQ').value = pre.q; $('#askPair').value = pre.pair; syncPair(); };
+    $('#askChips').append(c);
+  });
+
+  $('#askPair').onchange = syncPair;
+  $('#askRun').onclick = askRun;
+  $('#askRun').dataset.run = '1';
+  $('#askQ').onkeydown = e => { if (e.key === 'Enter') askRun(); };
+  syncPair();
+}
+
+function syncPair() {
+  const pair = PLAY.pairs.find(p => String(p.id) === $('#askPair').value);
+  PLAY_EX.id = pair.id;
+  PLAY_EX.bad_file = pair.bad_file;
+  PLAY_EX.good_file = pair.good_file;
+  ['bad', 'good'].forEach(v => {
+    const side = STATE[`play:${v}`].side;
+    const f = v === 'bad' ? pair.bad_file : pair.good_file;
+    const fileEl = side.querySelector('.file');
+    fileEl.textContent = f;
+    fileEl.dataset.openfile = f;
+    side.querySelector('.choice').textContent = v === 'bad' ? pair.bad_choice : pair.good_choice;
+    side.querySelector('details.code-src')?.remove();
+  });
+  const pre = PLAY.presets.find(p => p.pair === pair.id);
+  $('#askWhy').innerHTML = `<b>Pair ${pair.id} — ${esc(pair.title)}.</b> `
+    + (pre ? `Try: “${esc(pre.q)}” — ${esc(pre.why)}.` : 'Ask anything.');
+}
+
+async function askRun() {
+  const q = $('#askQ').value.trim();
+  if (!q || BUSY) return;
+  await runSide(PLAY_EX, 'bad', 1, q);
+  await runSide(PLAY_EX, 'good', 1, q);
+}
+
+/* ------------------------------------------------------- primitives */
+const PRIMS = [
+  ['tools', 'Tools', 'Model-decided actions. <code>tools/list</code> then <code>tools/call</code>. The only primitive most servers ship.'],
+  ['resources', 'Resources', 'Addressable context the client attaches — no tool call, so the model never spends a turn deciding. <code>resources/list</code>.'],
+  ['read_resource', 'Read a resource', 'Fetch <code>hr://employees</code> by URI. <code>resources/read</code>.'],
+  ['prompts', 'Prompts', 'User-invoked templates. These are what become slash commands in a client. <code>prompts/list</code>.'],
+  ['get_prompt', 'Get /payroll_triage', 'Expand the payroll triage prompt with arguments. <code>prompts/get</code>.'],
+  ['sampling', 'Sampling', 'The <b>server</b> asks the <b>client\'s</b> model. Inverted control flow — watch for an S→C request frame. <code>sampling/createMessage</code>.'],
+  ['elicitation', 'Elicitation', 'The <b>server</b> asks the <b>user</b> a question, with a schema. <code>elicitation/create</code>.'],
+];
+
+function buildPrimitives() {
+  const s = $('#tab-prim');
+  const doc = el('div', 'card accent primer', `<h3>${esc(PRIMS_DOC.title)}</h3>
+    <p style="color:var(--muted);line-height:1.75;margin-bottom:1.1rem">Each button below fires one
+    primitive against the good server and prints the JSON-RPC frames it produced. Read the
+    explanations first, then fire them and match the frames to the words.</p>`);
+  PRIMS_DOC.blocks.forEach(b => doc.append(el('div', 'pblock', `<h4>${esc(b.h)}</h4><p>${rich(b.p)}</p>`)));
+  s.append(doc);
+  const grid = el('div', 'prims');
+  PRIMS.forEach(([action, title, desc]) => {
+    const c = el('div', 'prim', `<h4>${esc(title)}</h4><p>${desc}</p>`);
+    const b = el('button', '', 'Fire');
+    b.onclick = () => firePrim(action, b);
+    c.append(b); grid.append(c);
+  });
+  s.append(grid);
+  s.append(el('div', 'card', '<h3>Result</h3><pre class="out" id="prim-out">pick a primitive above</pre>'));
+  const code = el('div', 'card');
+  code.append(el('h3', '', 'The code behind each primitive'));
+  PRIMS_DOC.snippets.forEach(sn => code.append(buildSnippet(sn)));
+  s.append(code);
+  s.append(el('div', 'card', '<h3>On the wire</h3><div class="wire" id="prim-wire"></div>'));
+}
+
+async function firePrim(action, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  $('#prim-out').textContent = 'running…';
+  try {
+    const r = await fetch('/api/primitive', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
+    const j = await r.json();
+    $('#prim-out').textContent = j.detail ? `error: ${j.detail}` : (j.result || '(empty)');
+    if (j.frames) renderWireInto($('#prim-wire'), j.frames);
+  } catch (e) {
+    $('#prim-out').textContent = 'error: ' + e;
+  } finally { btn.disabled = false; btn.textContent = 'Fire'; }
+}
+function renderWireInto(node, frames) {
+  node.innerHTML = frames.map(f => {
+    const out = f.dir === 'client->server';
+    return `<div class="f"><span class="d ${out ? 'out' : 'in'}">${out ? 'C→S' : 'S→C'}</span>
+      <span class="m">${esc(f.method || '')}</span>
+      <span class="b">${esc(JSON.stringify(f.body || {}).slice(0, 260))}</span></div>`;
+  }).join('');
+}
+
+/* ---------------------------------------------------------------- settings */
+// Everything here is a session override -- it changes the next run and is
+// forgotten on restart. .env stays the source of truth for a cold start.
+let SET = {};
+
+function renderCfg() {
+  const badge = CFG.offline_now ? '<br><span style="color:var(--warn)">offline — scripted</span>' : '';
+  $('#cfg').innerHTML = CFG.has_key || CFG.offline_now
+    ? `model <b>${esc(CFG.offline_now ? 'scripted (offline)' : CFG.model)}</b><br>` +
+      `budget ${num(CFG.context_budget)} tok · max ${CFG.max_tool_calls} calls${badge}`
+    : `<span class="nokey">no OPENAI_API_KEY</span><br>copy .env.example → .env`;
+}
+
+const MODEL_CHIPS = [
+  ['gpt-4o-mini', 'the demo default — weak enough that bad design actually breaks it'],
+  ['gpt-4o', 'a step up; starts papering over exhibits 1 and 6'],
+  ['gpt-5-mini', 'reasoning, cheap'],
+  ['gpt-5', 'frontier — competence hides several pitfalls, which is its own lesson'],
+];
+const BUDGET_CHIPS = [
+  [24000, 'the demo default'],
+  [128000, "a real gpt-4o window — exhibit 2's trace still will not fit"],
+  [250000, "big enough for exhibit 2's 236k trace — watch what it costs"],
+  [8000, 'tight — exhibit 4 starts overflowing too'],
+];
+
+// Which exhibits actually move when you turn each knob. This is derivable from
+// the code, not a guess: a tool result's size is fixed by the tool, and the
+// schema total is counted by tiktoken before the model is ever called.
+const MOVES = [
+  ['1. Endpoint-shaped', 'yes', 'no', 'yes', 'call count is a model decision; the per-call payload is not'],
+  ['2. Unbounded output', 'no', '<b>yes</b>', 'no', "235,912 tokens in one result overflows any model; only the budget line moves"],
+  ['3. Vague descriptions', '<b>yes</b>', 'no', 'yes', 'this is pure tool choice — the most model-sensitive exhibit'],
+  ['4. Raw JSON dumps', 'partly', 'no', 'no', 'the 19,799 vs 342 gap is fixed; whether it ranks correctly is not'],
+  ['5. Destructive tools', '<b>yes</b>', 'no', 'no', 'whether it reaches for DELETE is entirely the model'],
+  ['6. Tool bloat', 'partly', 'no', 'yes', 'schema tokens (3,171 vs 1,046) are counted locally and never move'],
+  ['7. The 7/10 tool', '<b>yes</b>', 'no', 'no', 'the pass rate IS a model measurement'],
+];
+
+function buildSettings() {
+  const s = $('#tab-set');
+  s.append(el('div', 'card accent', `
+    <h3>Settings</h3>
+    <p>Session overrides for the next run. Nothing here is written to disk —
+    restart and <code>.env</code> wins again. Changes are refused while a run is
+    in flight, because a run that changed model halfway through would produce a
+    scoreboard nobody could read.</p>
+    <p style="margin-top:.7rem">Two levers are <b>deliberately absent</b>: the system prompt and
+    the servers' <code>instructions</code>. Both are real, and both are what this demo holds
+    constant so that tool design stays the only variable — see
+    <span class="fileref" data-openfile="harness/settings.py">harness/settings.py</span>
+    for the argument.</p>`));
+
+  const form = el('div', 'card');
+  form.innerHTML = `
+    <div class="setgrid">
+      <div class="setrow">
+        <div class="lbl"><h4>Model</h4><p>Any OpenAI chat model id. This decides <i>which
+          tools get called</i> — it cannot change what a tool returns.</p></div>
+        <div>
+          <div class="field"><input type="text" id="setModel" spellcheck="false"></div>
+          <div class="chipset" id="modelChips" style="margin-top:.5rem"></div>
+          <div class="setnote" id="modelNote"></div>
+        </div>
+      </div>
+
+      <div class="setrow">
+        <div class="lbl"><h4>Context budget</h4><p>The stand-in for a context window, and
+          exhibit 2's <code>OVERFLOW</code> line. A single tool result larger than this
+          aborts the run.</p></div>
+        <div>
+          <div class="field"><input type="number" id="setBudget" step="1000"> <span
+            class="setnote" style="margin:0">tokens</span></div>
+          <div class="chipset" id="budgetChips" style="margin-top:.5rem"></div>
+          <div class="setnote" id="budgetNote"></div>
+        </div>
+      </div>
+
+      <div class="setrow">
+        <div class="lbl"><h4>Max tool calls</h4><p>A backstop, not a budget. Raising it buys
+          the bad server more rope to flail with in exhibits 1, 3 and 6.</p></div>
+        <div><div class="field"><input type="number" id="setCalls" step="1"> <span
+          class="setnote" style="margin:0">calls per run</span></div></div>
+      </div>
+
+      <div class="setrow">
+        <div class="lbl"><h4>Offline mode</h4><p>Swap the model for a fixed script: no
+          network, deterministic, projector-safe. Everything mechanical stays identical.</p></div>
+        <div>
+          <div class="chipset" id="offlineChips"></div>
+          <div class="setnote" id="offlineNote"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="setbar">
+      <button id="setApply">Apply</button>
+      <button class="ghost" id="setReset">Reset to .env defaults</button>
+      <span class="setmsg" id="setMsg"></span>
+    </div>`;
+  s.append(form);
+
+  const moves = el('div', 'card');
+  moves.innerHTML = `<h3>Does changing the model change the outputs?</h3>
+    <p style="color:var(--muted);line-height:1.7">Yes — but only half of them, and the half it
+    moves is the half you would expect. A model chooses <b>which tool to call</b>. It has no say
+    in <b>what that tool returns</b>, and none at all in what the tool schemas cost, because
+    those are counted locally before the request is even built. So a better model buys its way
+    out of some pitfalls and cannot touch the others.</p>
+    <table class="movetable">
+      <thead><tr><th>exhibit</th><th>model</th><th>budget</th><th>max calls</th><th>why</th></tr></thead>
+      <tbody>${MOVES.map(m => `<tr>
+        <td>${m[0]}</td>
+        <td class="${m[1].includes('yes') ? 'yes' : 'no'}">${m[1]}</td>
+        <td class="${m[2].includes('yes') ? 'yes' : 'no'}">${m[2]}</td>
+        <td class="${m[3].includes('yes') ? 'yes' : 'no'}">${m[3]}</td>
+        <td style="color:var(--muted)">${m[4]}</td></tr>`).join('')}</tbody>
+    </table>
+    <p style="color:var(--muted);line-height:1.7;margin-top:.9rem">The honest version of the
+    lesson: <b>exhibits 2, 4 and 6 are the ones you cannot outrun.</b> Point a frontier model at
+    a tool that returns 236,000 tokens and it fails exactly as hard as a small one — it just
+    fails more expensively. That is the argument for designing the tool rather than upgrading
+    the model.</p>`;
+  s.append(moves);
+
+  $('#setApply').onclick = applySettings;
+  $('#setApply').dataset.run = '1';
+  $('#setReset').onclick = resetSettings;
+  $('#setReset').dataset.run = '1';
+  loadSettings();
+}
+
+function paintSettings(j) {
+  SET = j;
+  const c = j.current;
+  $('#setModel').value = c.model;
+  $('#setBudget').value = c.context_budget;
+  $('#setCalls').value = c.max_tool_calls;
+
+  const chips = (host, items, isOn, onPick) => {
+    host.innerHTML = '';
+    items.forEach(([val, why]) => {
+      const b = el('button', 'chip' + (isOn(val) ? ' on' : ''), esc(String(val)));
+      b.title = why;
+      b.onclick = () => { onPick(val); paintSettings(SET); };
+      host.append(b);
+    });
+  };
+  chips($('#modelChips'), MODEL_CHIPS, v => v === $('#setModel').value,
+        v => { $('#setModel').value = v; });
+  chips($('#budgetChips'), BUDGET_CHIPS.map(([v, w]) => [v, w]),
+        v => String(v) === String($('#setBudget').value),
+        v => { $('#setBudget').value = v; });
+  chips($('#offlineChips'),
+        [['auto', 'offline only when there is no API key'],
+         ['on', 'always scripted — projector-safe'],
+         ['off', 'always live; errors honestly if there is no key']],
+        v => v === (SET.pending_offline ?? c.offline),
+        v => { SET.pending_offline = v; });
+
+  const picked = MODEL_CHIPS.find(m => m[0] === $('#setModel').value);
+  $('#modelNote').textContent = picked ? picked[1] : 'custom model id';
+  const bpick = BUDGET_CHIPS.find(b => String(b[0]) === String($('#setBudget').value));
+  $('#budgetNote').textContent = bpick ? bpick[1]
+    : `allowed range ${num(j.limits.context_budget[0])}–${num(j.limits.context_budget[1])}`;
+  const mode = SET.pending_offline ?? c.offline;
+  $('#offlineNote').textContent = mode === 'auto'
+    ? (j.config.has_key ? 'auto: a key is present, so runs are live'
+                        : 'auto: no key found, so runs are scripted')
+    : (mode === 'on' ? 'forced: every run uses the scripted stand-in'
+                     : 'forced: every run calls the real model');
+}
+
+async function loadSettings() {
+  try { paintSettings(await (await fetch('/api/settings')).json()); }
+  catch (e) { setMsg('could not load settings: ' + e, false); }
+}
+
+function setMsg(text, ok) {
+  const n = $('#setMsg');
+  n.className = 'setmsg ' + (ok ? 'ok' : 'err');
+  n.textContent = text;
+  if (ok) setTimeout(() => { if (n.textContent === text) n.textContent = ''; }, 4000);
+}
+
+async function postSettings(url, body) {
+  const r = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {})
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+  return j;
+}
+
+async function applySettings() {
+  try {
+    const j = await postSettings('/api/settings', {
+      model: $('#setModel').value.trim(),
+      context_budget: Number($('#setBudget').value),
+      max_tool_calls: Number($('#setCalls').value),
+      offline: SET.pending_offline ?? SET.current.offline,
+    });
+    delete SET.pending_offline;
+    paintSettings(j);
+    CFG = j.config; renderCfg();
+    setMsg('applied — takes effect on the next run', true);
+  } catch (e) { setMsg(String(e.message || e), false); }
+}
+
+async function resetSettings() {
+  try {
+    const j = await postSettings('/api/settings/reset');
+    delete SET.pending_offline;
+    paintSettings(j);
+    CFG = j.config; renderCfg();
+    setMsg('reset to .env defaults', true);
+  } catch (e) { setMsg(String(e.message || e), false); }
+}
+
+boot();
+</script>
+</body>
+</html>
